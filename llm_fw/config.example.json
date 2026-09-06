@@ -1,0 +1,17 @@
+{
+  "provider": "openai_compat",
+  "model": "gpt-4o-mini",
+  "api_key_env": "OPENAI_API_KEY",
+  "base_url": null,
+  "temperature": 0.4,
+  "max_tokens": 1024,
+  "workspace_root": ".",
+  "notes": {
+    "openai": "provider=openai_compat, model=gpt-4o-mini, api_key_env=OPENAI_API_KEY",
+    "groq": "provider=openai_compat, model=openai/gpt-oss-20b, base_url=https://api.groq.com/openai/v1, api_key_env=GROQ_API_KEY",
+    "grok_xai": "provider=openai_compat, model=grok-2-latest, base_url=https://api.x.ai/v1, api_key_env=XAI_API_KEY",
+    "ollama": "provider=openai_compat, model=llama3.2, base_url=http://127.0.0.1:11434/v1, api_key_env=OLLAMA_API_KEY (any string)",
+    "anthropic": "provider=anthropic, model=claude-sonnet-4-6, api_key_env=ANTHROPIC_API_KEY",
+    "openrouter": "provider=openai_compat, base_url=https://openrouter.ai/api/v1, api_key_env=OPENROUTER_API_KEY, model=..."
+  }
+}

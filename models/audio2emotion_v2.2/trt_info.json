@@ -1,0 +1,17 @@
+{
+    "estimated_trt_builder_time": 150,
+    "trt_build_param": {
+        "batch": [
+            "--minShapes=input_values:1x{MIN_BUFFER_LEN}",
+            "--maxShapes=input_values:{MAX_BATCH_SIZE}x{MAX_BUFFER_LEN}",
+            "--optShapes=input_values:{OPT_BATCH_SIZE}x{OPT_BUFFER_LEN}"
+            ]
+    },
+    "defaults": {
+        "MAX_BATCH_SIZE": 128,
+        "OPT_BATCH_SIZE": 8,
+        "MAX_BUFFER_LEN": 60000,
+        "OPT_BUFFER_LEN": 30000,
+        "MIN_BUFFER_LEN": 5000
+    }
+}

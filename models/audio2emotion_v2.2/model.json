@@ -1,0 +1,5 @@
+{
+    "networkInfoPath": "network_info.json",
+    "networkPath": "network.trt",
+    "modelConfigPath": "model_config.json"
+}

@@ -1,0 +1,22 @@
+{
+    "post_processing_config": {
+        "output_emotion_length": 10,
+        "emotion_contrast": 1.0,
+        "live_blend_coef": 0.7,
+        "preferred_emotion_strength": 0.5,
+        "fixed_dt": 0.033,
+        "transition_smoothing": 0.5,
+        "enable_preferred_emotion": false,
+        "preferred_emotion": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "emotion_strength": 0.6,
+        "max_emotions": 6,
+        "emotion_correspondence": {
+            "angry": 1,
+            "disgust": 3,
+            "fear": 4,
+            "happy": 6,
+            "sad": 9,
+            "neutral": -1
+        }
+    }
+}

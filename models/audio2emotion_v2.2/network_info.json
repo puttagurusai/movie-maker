@@ -1,0 +1,6 @@
+{
+    "audio_params": {
+        "samplerate": 16000
+    },
+    "emotions": ["angry", "disgust", "fear", "happy", "neutral", "sad"]
+}

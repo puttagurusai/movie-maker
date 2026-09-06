@@ -1,0 +1,9 @@
+﻿{
+  "provider": "openai_compat",
+  "model": "grok-2-latest",
+  "api_key_env": "XAI_API_KEY",
+  "base_url": "https://api.x.ai/v1",
+  "temperature": 0.4,
+  "max_tokens": 4096,
+  "workspace_root": "."
+}
