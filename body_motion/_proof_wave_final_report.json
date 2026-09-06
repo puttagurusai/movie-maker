@@ -1,0 +1,13 @@
+{
+  "action": "wave",
+  "fbx": "wave.fbx",
+  "pairs": 52,
+  "frames": [
+    1,
+    142
+  ],
+  "channels_changing": 19,
+  "right_shoulder_delta": 1.340678334236145,
+  "blend": "C:\\me\\proj\\projface_v1\\body_motion\\_proof_wave_inplace.blend",
+  "map": "C:\\me\\proj\\projface_v1\\body_motion\\FINAL_BONE_MAP.json"
+}

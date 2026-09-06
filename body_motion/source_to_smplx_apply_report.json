@@ -1,0 +1,46 @@
+{
+  "ok": true,
+  "method": "rest_relative_world",
+  "calib": "C:\\me\\proj\\projface_v1\\body_motion\\source_to_smplx_calib.json",
+  "action": "momask_from_calib",
+  "verify": {
+    "frames": [
+      {
+        "f": 1,
+        "legs_down": true,
+        "spine_up": true,
+        "hand_drop": 0.511,
+        "pelvis": [
+          0.001,
+          -0.013,
+          0.992
+        ]
+      },
+      {
+        "f": 31,
+        "legs_down": true,
+        "spine_up": true,
+        "hand_drop": 0.357,
+        "pelvis": [
+          -0.035,
+          -0.286,
+          0.913
+        ]
+      },
+      {
+        "f": 61,
+        "legs_down": true,
+        "spine_up": true,
+        "hand_drop": 0.492,
+        "pelvis": [
+          -0.128,
+          -2.394,
+          1.234
+        ]
+      }
+    ],
+    "pelvis_travel": 3.546,
+    "ok": true
+  },
+  "scale": 1.1223204856944244
+}

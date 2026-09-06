@@ -1,0 +1,37 @@
+Bone length comparison (WORLD units, REST pose)
+BVH: momask_walk.bvh  object_scale=(1.0, 1.0, 1.0)
+FBX: walk.fbx  object_scale=(0.01, 0.01, 0.01)  armature=Armature
+
+segment                             BVH     Mixamo       diff      ratio      pct
+------------------------------------------------------------------------------------------
+hips-head                        0.5760     0.5574     0.0186     1.0334     3.3%
+hips-spine                       0.1122     0.1018     0.0104     1.1020    10.2%
+spine-spine1                     0.1353     0.1000     0.0353     1.3526    35.3%
+spine1-spine2                    0.0587     0.0932    -0.0345     0.6300   -37.0%
+spine2-neck                      0.2181     0.1687     0.0495     1.2934    29.3%
+neck-head                        0.0830     0.0976    -0.0147     0.8497   -15.0%
+hips-spine2                      0.2971     0.2942     0.0029     1.0098     1.0%
+L_hips-upleg                     0.1150     0.1075     0.0076     1.0704     7.0%
+L_thigh                          0.3768     0.4437    -0.0669     0.8492   -15.1%
+L_shin                           0.4006     0.4453    -0.0447     0.8996   -10.0%
+L_foot                           0.1343     0.1382    -0.0039     0.9720    -2.8%
+R_thigh                          0.3846     0.4437    -0.0591     0.8667   -13.3%
+R_shin                           0.4010     0.4453    -0.0443     0.9005   -10.0%
+R_foot                           0.1348     0.1382    -0.0033     0.9758    -2.4%
+L_collar                         0.1490     0.1212     0.0278     1.2294    22.9%
+L_clavicle                       0.0964     0.1084    -0.0120     0.8890   -11.1%
+L_upper_arm                      0.2614     0.2784    -0.0170     0.9388    -6.1%
+L_forearm                        0.2494     0.2833    -0.0339     0.8804   -12.0%
+R_collar                         0.1493     0.1212     0.0281     1.2321    23.2%
+R_clavicle                       0.1018     0.1084    -0.0066     0.9392    -6.1%
+R_upper_arm                      0.2550     0.2784    -0.0234     0.9159    -8.4%
+R_forearm                        0.2555     0.2833    -0.0278     0.9018    -9.8%
+
+mean ratio BVH/Mixamo = 0.9878
+min=0.6300  max=1.3526
+
+Interpretation:
+- pct > 0: BVH segment longer than Mixamo
+- pct < 0: BVH shorter than Mixamo
+- Uniform scale can match hips-head overall, but spine/collar/legs ratios still differ
+- That is why retarget can look OK on legs but odd on torso without good spine rotations

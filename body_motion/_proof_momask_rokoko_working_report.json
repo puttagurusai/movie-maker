@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "method": "KeeMap Mixamo \u2192 SMPL-X with working Rokoko map + helper bake",
+  "src_blend": "C:\\me\\proj\\projface_v1\\body_motion\\_momask_mixamo_catalog.blend",
+  "rokoko_map": "C:\\me\\proj\\projface_v1\\working maximo to smplx.json",
+  "resolved_map": "C:\\me\\proj\\projface_v1\\body_motion\\WORKING_ROKOKO_MIXAMO_TO_SMPLX_resolved.json",
+  "action": "momask_via_mixamo",
+  "pairs": 52,
+  "frames": [
+    1,
+    119
+  ],
+  "root_mode": "location",
+  "travel": 3.546,
+  "right_shoulder_delta": 1.0171815305948257,
+  "checks": [
+    {
+      "f": 1,
+      "legs_down": true,
+      "spine_up": true,
+      "hand_drop": 0.527,
+      "L_sh_z": 1.229,
+      "spine2_w": 0.557,
+      "collar_w": 0.627,
+      "L_elb_w": 0.964,
+      "pelvis": [
+        0.001,
+        -0.013,
+        0.992
+      ]
+    },
+    {
+      "f": 31,
+      "legs_down": true,
+      "spine_up": true,
+      "hand_drop": 0.397,
+      "L_sh_z": 1.16,
+      "spine2_w": 0.735,
+      "collar_w": 0.705,
+      "L_elb_w": 0.773,
+      "pelvis": [
+        -0.035,
+        -0.286,
+        0.913
+      ]
+    },
+    {
+      "f": 61,
+      "legs_down": true,
+      "spine_up": true,
+      "hand_drop": 0.525,
+      "L_sh_z": 1.466,
+      "spine2_w": 0.671,
+      "collar_w": 0.599,
+      "L_elb_w": 0.923,
+      "pelvis": [
+        -0.128,
+        -2.394,
+        1.234
+      ]
+    }
+  ],
+  "saved": "C:\\me\\proj\\projface_v1\\body_motion\\_momask_ours.blend"
+}

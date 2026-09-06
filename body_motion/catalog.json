@@ -1,0 +1,171 @@
+{
+  "notes": "Motion controller catalog. clip_id → Mixamo source + retargeted Action name on SMPL-X_Armature.",
+  "armature": "SMPL-X_Armature",
+  "blend_file": "whole_body_retargeted.blend",
+  "source_dir": "body_motion/source_fbx",
+  "export_dir": "web_viewer/body_assets/animations",
+  "clips": {
+    "idle": {
+      "fbx": "Idle.fbx",
+      "action": "idle",
+      "layer": "base",
+      "loop": true,
+      "director": ["idle", "standing"]
+    },
+    "walk": {
+      "fbx": "walk.fbx",
+      "action": "walk",
+      "layer": "base",
+      "loop": true,
+      "director": ["walking", "walk"]
+    },
+    "walk_back": {
+      "fbx": "walk_back.fbx",
+      "action": "walk_back",
+      "layer": "base",
+      "loop": true,
+      "director": ["walk_back"]
+    },
+    "run": {
+      "fbx": "run.fbx",
+      "action": "run",
+      "layer": "base",
+      "loop": true,
+      "director": ["run", "running"]
+    },
+    "sit_idle": {
+      "fbx": "sit_idle.fbx",
+      "action": "sit_idle",
+      "layer": "base",
+      "loop": true,
+      "director": ["sitting", "sit"]
+    },
+    "turn_left": {
+      "fbx": "turn_left.fbx",
+      "action": "turn_left",
+      "layer": "base",
+      "loop": false,
+      "director": ["turn_left"]
+    },
+    "turn_right": {
+      "fbx": "turn_right.fbx",
+      "action": "turn_right",
+      "layer": "base",
+      "loop": false,
+      "director": ["turn_right"]
+    },
+    "talk_open": {
+      "fbx": "talk_open.fbx",
+      "action": "talk_open",
+      "layer": "upper",
+      "loop": true,
+      "director": ["talk_open"]
+    },
+    "talk_emphasize": {
+      "fbx": "talk_emphasize.fbx",
+      "action": "talk_emphasize",
+      "layer": "upper",
+      "loop": true,
+      "director": ["talk_emphasize"]
+    },
+    "wave": {
+      "fbx": "wave.fbx",
+      "action": "wave",
+      "layer": "upper",
+      "loop": false,
+      "director": ["wave"]
+    },
+    "shrug": {
+      "fbx": "shrug.fbx",
+      "action": "shrug",
+      "layer": "upper",
+      "loop": false,
+      "director": ["shrug"]
+    },
+    "point": {
+      "fbx": "point.fbx",
+      "action": "point",
+      "layer": "upper",
+      "loop": false,
+      "director": ["point", "point_forward"]
+    },
+    "recoil": {
+      "fbx": "Reacting.fbx",
+      "action": "recoil",
+      "layer": "full",
+      "loop": false,
+      "director": ["recoil"]
+    },
+    "think": {
+      "fbx": "look_around.fbx",
+      "action": "think",
+      "layer": "upper",
+      "loop": true,
+      "director": ["think", "think_chin"],
+      "notes": "uses look_around.fbx as thinking/searching upper motion"
+    },
+    "nod_yes": {
+      "fbx": "Head Nod Yes.fbx",
+      "action": "nod_yes",
+      "layer": "head",
+      "loop": false,
+      "director": ["nod_yes", "nod"]
+    },
+    "shake_no": {
+      "fbx": "Shaking Head No.fbx",
+      "action": "shake_no",
+      "layer": "head",
+      "loop": false,
+      "director": ["shake_no"]
+    },
+    "agree": {
+      "fbx": "Agreeing.fbx",
+      "action": "agree",
+      "layer": "upper",
+      "loop": false,
+      "director": ["agree", "nod_yes"]
+    },
+    "celebrate": {
+      "fbx": "Clapping.fbx",
+      "action": "celebrate",
+      "layer": "upper",
+      "loop": false,
+      "director": ["celebrate"]
+    },
+    "hands_reject": {
+      "fbx": "hands_reject@Dismissing Gesture.fbx",
+      "action": "hands_reject",
+      "layer": "upper",
+      "loop": false,
+      "director": ["hands_reject"]
+    },
+    "tense": {
+      "fbx": "angry idle.fbx",
+      "action": "tense",
+      "layer": "full",
+      "loop": true,
+      "director": ["tense", "angry"]
+    },
+    "slump": {
+      "fbx": "sad idle.fbx",
+      "action": "slump",
+      "layer": "full",
+      "loop": true,
+      "director": ["slump", "sad"]
+    },
+    "bow": {
+      "fbx": "Thankful.fbx",
+      "action": "bow",
+      "layer": "full",
+      "loop": false,
+      "director": ["bow", "apologetic"]
+    },
+    "look_around": {
+      "fbx": "look_around.fbx",
+      "action": "look_around",
+      "layer": "upper",
+      "loop": true,
+      "director": ["look_around", "look_camera"]
+    }
+  }
+}

@@ -1,0 +1,1442 @@
+================================================================================
+  LMM TRAINING CODE — ALL STEPS (Step 1 already PASSED)
+  Project: projface_v1 | Guide: GEMINI_LMM_TRAINING_GUIDE.txt
+  LOCKED: feature_dim=263, pose_dim=66, fps_native=20, fps_export=30
+================================================================================
+
+
+================================================================================
+STEP 2 — dataset.py   (save to: body_motion/lmm_train/data/dataset.py)
+================================================================================
+
+import os
+import random
+import numpy as np
+import torch
+from torch.utils.data import Dataset
+from data.geometry import compute_state_traj
+
+
+def _resolve_data_root(data_root: str) -> str:
+    """Auto-detect the directory that contains both new_joint_vecs/ and texts/."""
+    for root, dirs, _ in os.walk(data_root):
+        if "new_joint_vecs" in dirs and ("texts" in dirs or "train.txt" in os.listdir(root)):
+            return root
+    raise FileNotFoundError(
+        f"Cannot find new_joint_vecs/ + texts/ under {data_root}. "
+        "Check your DATA_ROOT path."
+    )
+
+
+def _load_ids(split_file: str) -> list:
+    ids = []
+    with open(split_file, "r") as f:
+        for line in f:
+            line = line.strip().rstrip(",")
+            if line:
+                ids.append(line)
+    return ids
+
+
+class HumanML3DDataset(Dataset):
+    """
+    Yields per-frame samples from HumanML3D (Kaggle mrriandmstique/humanml3d).
+
+    Each sample (dict):
+        x_t      : (263,)  normalised feature at frame t
+        x_next   : (263,)  normalised feature at frame t+1
+        y_t      : (66,)   joint positions flat  [22 joints * 3]
+        state_t  : (state_dim,)  geometric state
+        traj_t   : (10,)   future trajectory in local frame
+        caption  : str     one randomly chosen caption for the clip
+    """
+
+    def __init__(self, data_root: str, split: str = "train",
+                 text_cache: dict = None):
+        self.data_root = _resolve_data_root(data_root)
+        self.mean = np.load(os.path.join(self.data_root, "Mean.npy")).astype(np.float32)
+        self.std  = np.load(os.path.join(self.data_root, "Std.npy")).astype(np.float32)
+
+        split_map = {
+            "train": "train.txt",
+            "val":   "val.txt",
+            "test":  "test.txt",
+        }
+        split_file = os.path.join(self.data_root, split_map[split])
+        if not os.path.exists(split_file):
+            if split == "val" and os.path.exists(os.path.join(self.data_root, "train_val.txt")):
+                split_file = os.path.join(self.data_root, "train_val.txt")
+            else:
+                raise FileNotFoundError(f"Split file not found: {split_file}")
+
+        all_ids = _load_ids(split_file)
+
+        vec_dir    = os.path.join(self.data_root, "new_joint_vecs")
+        joints_dir = os.path.join(self.data_root, "new_joints")
+        text_dir   = os.path.join(self.data_root, "texts")
+
+        self.samples = []   # list of (vec_path, joints_path, text_path)
+        for mid in all_ids:
+            vp = os.path.join(vec_dir,    mid + ".npy")
+            jp = os.path.join(joints_dir, mid + ".npy")
+            tp = os.path.join(text_dir,   mid + ".txt")
+            if os.path.exists(vp) and os.path.exists(jp) and os.path.exists(tp):
+                self.samples.append((vp, jp, tp))
+
+        self.text_cache = text_cache or {}
+
+        self._build_frame_index()
+
+    def _build_frame_index(self):
+        """Build flat (sample_idx, frame_idx) index excluding last frame (no x_next)."""
+        self.index = []
+        for si, (vp, jp, tp) in enumerate(self.samples):
+            vec = np.load(vp, mmap_mode="r")
+            T = vec.shape[0]
+            for t in range(T - 1):
+                self.index.append((si, t))
+
+    def __len__(self):
+        return len(self.index)
+
+    def _parse_captions(self, text_path: str) -> list:
+        captions = []
+        with open(text_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                if "#" in line:
+                    line = line[:line.index("#")].strip()
+                if line:
+                    captions.append(line)
+        return captions if captions else [""]
+
+    def __getitem__(self, idx: int) -> dict:
+        si, t = self.index[idx]
+        vp, jp, tp = self.samples[si]
+
+        vec    = np.load(vp).astype(np.float32)   # (T, 263)
+        joints = np.load(jp).astype(np.float32)   # (T, 22, 3)
+
+        x_t    = (vec[t]   - self.mean) / (self.std + 1e-8)
+        x_next = (vec[t+1] - self.mean) / (self.std + 1e-8)
+        y_t    = joints[t].reshape(-1)             # (66,)
+
+        state_t, traj_t = compute_state_traj(joints, t)
+
+        captions = self._parse_captions(tp)
+        caption  = random.choice(captions)
+
+        return {
+            "x_t":    torch.from_numpy(x_t),
+            "x_next": torch.from_numpy(x_next),
+            "y_t":    torch.from_numpy(y_t),
+            "state_t": torch.from_numpy(state_t),
+            "traj_t":  torch.from_numpy(traj_t),
+            "caption": caption,
+        }
+
+
+================================================================================
+STEP 2 — geometry.py   (save to: body_motion/lmm_train/data/geometry.py)
+================================================================================
+
+import numpy as np
+
+# HumanML3D / SMPL-H joint indices (22 joints)
+# 0=Pelvis(root), 1=L_Hip, 2=R_Hip, 3=Spine1, 4=L_Knee, 5=R_Knee,
+# 6=Spine2, 7=L_Ankle, 8=R_Ankle, 9=Spine3, 10=L_Foot, 11=R_Foot,
+# 12=Neck, 13=L_Collar, 14=R_Collar, 15=Head, 16=L_Shoulder,
+# 17=R_Shoulder, 18=L_Elbow, 19=R_Elbow, 20=L_Wrist, 21=R_Wrist
+
+ROOT_IDX  = 0
+L_FOOT    = 10
+R_FOOT    = 11
+FOOT_HEIGHT_THRESH = 0.08   # metres; contact if y < this
+
+HORIZONS  = [4, 8, 12, 16, 20]   # frames at fps=20  → ~0.2..1.0 s
+TRAJ_DIM  = len(HORIZONS) * 2    # 10
+STATE_DIM = 2 + 2 + 2            # vel_xz + face_xz + foot_contact  = 6
+
+
+def _facing_vector(joints: np.ndarray, t: int) -> np.ndarray:
+    """
+    Estimate 2-D facing direction (xz plane) from left/right hip cross-product
+    or fall back to velocity direction.
+    joints: (T, 22, 3)
+    Returns unit vector (2,) in xz.
+    """
+    T = joints.shape[0]
+    l_hip = joints[t, 1, :]   # L_Hip
+    r_hip = joints[t, 2, :]   # R_Hip
+    hip_vec = l_hip - r_hip   # points left
+
+    right_xz = np.array([hip_vec[0], hip_vec[2]], dtype=np.float32)
+    # forward = perpendicular to right (rotate 90 CCW in xz)
+    forward_xz = np.array([-right_xz[1], right_xz[0]], dtype=np.float32)
+
+    norm = np.linalg.norm(forward_xz)
+    if norm < 1e-6:
+        # fall back to velocity
+        if t < T - 1:
+            d = joints[t+1, ROOT_IDX, [0, 2]] - joints[t, ROOT_IDX, [0, 2]]
+            norm2 = np.linalg.norm(d)
+            if norm2 > 1e-6:
+                return (d / norm2).astype(np.float32)
+        return np.array([0.0, 1.0], dtype=np.float32)
+    return (forward_xz / norm).astype(np.float32)
+
+
+def _rotate_to_local(delta_xz: np.ndarray, facing: np.ndarray) -> np.ndarray:
+    """
+    Rotate world-space xz offset into facing-local frame.
+    facing: unit (2,) = [fx, fz]
+    local x = right,  local z = forward
+    """
+    fx, fz = facing[0], facing[1]
+    # rotation matrix cols: right=[-fz, fx], forward=[fx, fz]  (2x2)
+    dx, dz = delta_xz[0], delta_xz[1]
+    local_x = -fz * dx + fx * dz
+    local_z =  fx * dx + fz * dz
+    return np.array([local_x, local_z], dtype=np.float32)
+
+
+def compute_state_traj(joints: np.ndarray, t: int):
+    """
+    Compute geometric state and trajectory features for frame t.
+
+    joints : (T, 22, 3)   float32
+    t      : int           frame index
+
+    Returns:
+        state_t : (STATE_DIM,) = (6,)   [vel_xz(2), face_xz(2), foot_contact(2)]
+        traj_t  : (TRAJ_DIM,) = (10,)   [local_delta_xz for each horizon]
+    """
+    T = joints.shape[0]
+
+    root_pos = joints[:, ROOT_IDX, :]   # (T, 3)
+
+    # --- velocity xz ---
+    if t < T - 1:
+        vel_xz = root_pos[t+1, [0, 2]] - root_pos[t, [0, 2]]
+    else:
+        vel_xz = np.zeros(2, dtype=np.float32)
+
+    # --- facing ---
+    face_xz = _facing_vector(joints, t)
+
+    # --- foot contact ---
+    lf_height = joints[t, L_FOOT, 1]
+    rf_height = joints[t, R_FOOT, 1]
+    lf_contact = float(lf_height < FOOT_HEIGHT_THRESH)
+    rf_contact = float(rf_height < FOOT_HEIGHT_THRESH)
+    foot = np.array([lf_contact, rf_contact], dtype=np.float32)
+
+    state_t = np.concatenate([vel_xz, face_xz, foot], axis=0)   # (6,)
+
+    # --- future trajectory ---
+    traj_deltas = []
+    for h in HORIZONS:
+        t_fut = min(t + h, T - 1)
+        delta_world = root_pos[t_fut, [0, 2]] - root_pos[t, [0, 2]]
+        delta_local = _rotate_to_local(delta_world.astype(np.float32), face_xz)
+        traj_deltas.append(delta_local)
+
+    traj_t = np.concatenate(traj_deltas, axis=0)   # (10,)
+
+    return state_t.astype(np.float32), traj_t.astype(np.float32)
+
+
+================================================================================
+STEP 2 — text_cache.py   (save to: body_motion/lmm_train/data/text_cache.py)
+================================================================================
+
+"""
+Precompute and cache DistilBERT CLS embeddings for all captions.
+Usage:
+    python data/text_cache.py --data_root $DATA_ROOT --out caches/text_emb_cache.pt
+"""
+
+import os
+import argparse
+import torch
+from transformers import DistilBertTokenizer, DistilBertModel
+from tqdm import tqdm
+
+
+def build_cache(data_root: str, out_path: str, device: str = "cuda"):
+    text_dir = os.path.join(data_root, "texts")
+    txt_files = sorted(os.listdir(text_dir))
+
+    tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
+    model     = DistilBertModel.from_pretrained("distilbert-base-uncased").to(device)
+    model.eval()
+    for p in model.parameters():
+        p.requires_grad_(False)
+
+    cache = {}
+    with torch.no_grad():
+        for fname in tqdm(txt_files, desc="Caching text embeddings"):
+            fpath = os.path.join(text_dir, fname)
+            with open(fpath, "r", encoding="utf-8") as f:
+                lines = [l.strip() for l in f if l.strip()]
+
+            captions = []
+            for line in lines:
+                if "#" in line:
+                    line = line[:line.index("#")].strip()
+                if line:
+                    captions.append(line)
+
+            for cap in captions:
+                if cap in cache:
+                    continue
+                enc = tokenizer(cap, return_tensors="pt",
+                                truncation=True, max_length=128).to(device)
+                out = model(**enc)
+                cls_vec = out.last_hidden_state[:, 0, :].squeeze(0).cpu()
+                cache[cap] = cls_vec
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    torch.save(cache, out_path)
+    print(f"Saved {len(cache)} embeddings → {out_path}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_root", required=True)
+    parser.add_argument("--out", default="caches/text_emb_cache.pt")
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    args = parser.parse_args()
+    build_cache(args.data_root, args.out, args.device)
+
+
+================================================================================
+STEP 3 — text_encoder.py   (save to: body_motion/lmm_train/models/text_encoder.py)
+================================================================================
+
+"""
+Text encoding stack:
+  DistilBERT (frozen)  →  TextProj (768→64)  →  e  →  Text2Traj (64→traj_dim)
+
+Unit test at bottom: python models/text_encoder.py
+"""
+
+import torch
+import torch.nn as nn
+from transformers import DistilBertTokenizer, DistilBertModel
+
+
+class TextEncoder(nn.Module):
+    """
+    Frozen DistilBERT + trainable TextProj + trainable Text2Traj.
+
+    Attributes
+    ----------
+    D_e      : int  projected text dim  (64)
+    traj_dim : int  trajectory feature dim  (10)
+    """
+
+    def __init__(self, D_e: int = 64, traj_dim: int = 10,
+                 model_name: str = "distilbert-base-uncased"):
+        super().__init__()
+        self.D_e      = D_e
+        self.traj_dim = traj_dim
+
+        # ----- DistilBERT (frozen) -----
+        self.tokenizer = DistilBertTokenizer.from_pretrained(model_name)
+        self.bert      = DistilBertModel.from_pretrained(model_name)
+        for p in self.bert.parameters():
+            p.requires_grad_(False)
+
+        # ----- TextProj : 768 → 64 -----
+        self.text_proj = nn.Sequential(
+            nn.Linear(768, D_e),
+            nn.LayerNorm(D_e),
+        )
+
+        # ----- Text2Traj : 64 → 256 → ELU → traj_dim -----
+        self.text2traj = nn.Sequential(
+            nn.Linear(D_e, 256),
+            nn.ELU(),
+            nn.Linear(256, traj_dim),
+        )
+
+    def encode_raw(self, captions: list, device) -> torch.Tensor:
+        """
+        Run DistilBERT on raw strings.
+        Returns CLS embeddings (B, 768).
+        """
+        enc = self.tokenizer(captions, return_tensors="pt",
+                             padding=True, truncation=True,
+                             max_length=128).to(device)
+        with torch.no_grad():
+            out = self.bert(**enc)
+        return out.last_hidden_state[:, 0, :]   # (B, 768)
+
+    def forward(self, emb_768: torch.Tensor):
+        """
+        emb_768 : (B, 768)  — either from cache or encode_raw()
+        Returns:
+            e    : (B, D_e)       projected text embedding
+            traj : (B, traj_dim)  predicted trajectory
+        """
+        e    = self.text_proj(emb_768)     # (B, 64)
+        traj = self.text2traj(e)           # (B, 10)
+        return e, traj
+
+    def encode_prompt(self, caption: str, device):
+        """
+        Convenience: single string → (e, traj_pred).
+        """
+        emb = self.encode_raw([caption], device)
+        return self.forward(emb)
+
+
+# ---- unit test ----
+if __name__ == "__main__":
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    enc = TextEncoder(D_e=64, traj_dim=10).to(device)
+    enc.eval()
+    e, traj = enc.encode_prompt("a person walks forward slowly", device)
+    print(f"e    shape: {e.shape}")     # expected (1, 64)
+    print(f"traj shape: {traj.shape}")  # expected (1, 10)
+    assert e.shape == (1, 64),  f"FAIL: e shape {e.shape}"
+    assert traj.shape == (1, 10), f"FAIL: traj shape {traj.shape}"
+    print("TextEncoder unit test PASSED")
+
+
+================================================================================
+STEP 4 — lmm_nets.py   (save to: body_motion/lmm_train/models/lmm_nets.py)
+================================================================================
+
+"""
+Holden (2020) Learned Motion Matching networks:
+  DecompressorNet  : x_t (263) → y_t (66)
+  StepperNet       : (x_t, c_t) → x_next (263)
+  ProjectorNet     : q_t → x_star (263)
+
+All activations: ELU.  Hidden size: 512 (from config).
+"""
+
+import torch
+import torch.nn as nn
+
+
+def _mlp(in_dim: int, hidden: int, out_dim: int,
+         dropout: float = 0.0) -> nn.Sequential:
+    layers = [
+        nn.Linear(in_dim, hidden),
+        nn.ELU(),
+    ]
+    if dropout > 0:
+        layers.append(nn.Dropout(dropout))
+    layers += [
+        nn.Linear(hidden, hidden),
+        nn.ELU(),
+    ]
+    if dropout > 0:
+        layers.append(nn.Dropout(dropout))
+    layers.append(nn.Linear(hidden, out_dim))
+    return nn.Sequential(*layers)
+
+
+class DecompressorNet(nn.Module):
+    """
+    x_t (feature_dim=263) → y_t (pose_dim=66)
+    MLP: 263 → 512 → ELU → 512 → ELU → 66
+    """
+
+    def __init__(self, feature_dim: int = 263, pose_dim: int = 66,
+                 hidden: int = 512):
+        super().__init__()
+        self.net = _mlp(feature_dim, hidden, pose_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """x: (B, 263) → y: (B, 66)"""
+        return self.net(x)
+
+
+class StepperNet(nn.Module):
+    """
+    (x_t, c_t) → x_{t+1}
+    c_t = concat(traj_t, e)  → control_dim = traj_dim + D_e = 10 + 64 = 74
+    MLP: (263 + 74) → 512 → ELU → 512 → ELU → 263
+    """
+
+    def __init__(self, feature_dim: int = 263, control_dim: int = 74,
+                 hidden: int = 512):
+        super().__init__()
+        self.net = _mlp(feature_dim + control_dim, hidden, feature_dim)
+
+    def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+        """
+        x : (B, 263)
+        c : (B, control_dim)
+        Returns x_next: (B, 263)
+        """
+        return self.net(torch.cat([x, c], dim=-1))
+
+
+class ProjectorNet(nn.Module):
+    """
+    q_t → x_star
+    q_t = concat(state_t, traj_t, e) → query_dim = state_dim + traj_dim + D_e
+                                                   = 6 + 10 + 64 = 80
+    MLP: 80 → 512 → ELU → Dropout(0.3) → 512 → ELU → Dropout(0.3) → 263
+    """
+
+    def __init__(self, query_dim: int = 80, feature_dim: int = 263,
+                 hidden: int = 512, dropout: float = 0.3):
+        super().__init__()
+        self.net = _mlp(query_dim, hidden, feature_dim, dropout=dropout)
+
+    def forward(self, q: torch.Tensor) -> torch.Tensor:
+        """q: (B, query_dim) → x_star: (B, 263)"""
+        return self.net(q)
+
+
+# ---- unit tests ----
+if __name__ == "__main__":
+    B = 4
+    feature_dim  = 263
+    pose_dim     = 66
+    control_dim  = 74   # 10 + 64
+    query_dim    = 80   # 6 + 10 + 64
+
+    decomp = DecompressorNet()
+    stepper = StepperNet()
+    proj    = ProjectorNet()
+
+    x = torch.randn(B, feature_dim)
+    c = torch.randn(B, control_dim)
+    q = torch.randn(B, query_dim)
+
+    y   = decomp(x)
+    xn  = stepper(x, c)
+    xs  = proj(q)
+
+    assert y.shape  == (B, pose_dim),    f"FAIL decomp: {y.shape}"
+    assert xn.shape == (B, feature_dim), f"FAIL stepper: {xn.shape}"
+    assert xs.shape == (B, feature_dim), f"FAIL proj: {xs.shape}"
+
+    print(f"Decompressor output: {y.shape}")   # (4, 66)
+    print(f"Stepper     output: {xn.shape}")   # (4, 263)
+    print(f"Projector   output: {xs.shape}")   # (4, 263)
+    print("lmm_nets unit test PASSED")
+
+
+================================================================================
+STEP 5 — train_stage1_decomp.py   (save to: body_motion/lmm_train/train/train_stage1_decomp.py)
+================================================================================
+
+"""
+Stage 1: Train DecompressorNet only.
+Loss: L_decomp = MSE(Decompressor(x_t), y_t)
+
+Run:
+    python train/train_stage1_decomp.py --config config.yaml
+"""
+
+import os
+import argparse
+import yaml
+import random
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from data.dataset import HumanML3DDataset
+from models.lmm_nets import DecompressorNet
+
+
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def collate_fn(batch):
+    keys = ["x_t", "x_next", "y_t", "state_t", "traj_t"]
+    out  = {k: torch.stack([s[k] for s in batch]) for k in keys}
+    out["caption"] = [s["caption"] for s in batch]
+    return out
+
+
+def train_stage1(cfg: dict, args):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    set_seed(cfg.get("seed", 42))
+
+    feature_dim = cfg["feature_dim"]   # 263
+    pose_dim    = cfg["pose_dim"]      # 66
+    hidden      = cfg.get("hidden", 512)
+    lr          = cfg.get("lr", 1e-4)
+    batch_size  = cfg.get("batch_size", 256)
+    epochs      = cfg.get("epochs_stage1", 30)
+    ckpt_dir    = cfg.get("checkpoint_dir", "checkpoints")
+    data_root   = cfg["data_root"]
+
+    os.makedirs(ckpt_dir, exist_ok=True)
+
+    train_ds = HumanML3DDataset(data_root, split="train")
+    val_ds   = HumanML3DDataset(data_root, split="val")
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+                              num_workers=4, pin_memory=True,
+                              collate_fn=collate_fn, drop_last=True)
+    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False,
+                              num_workers=2, pin_memory=True,
+                              collate_fn=collate_fn, drop_last=False)
+
+    model = DecompressorNet(feature_dim=feature_dim,
+                            pose_dim=pose_dim, hidden=hidden).to(device)
+
+    optimizer = torch.optim.AdamW(model.parameters(),
+                                  lr=lr, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=epochs)
+
+    criterion = nn.MSELoss()
+    best_val  = float("inf")
+
+    for epoch in range(1, epochs + 1):
+        model.train()
+        total_loss = 0.0
+        for batch in tqdm(train_loader, desc=f"[Stage1] Epoch {epoch}/{epochs}",
+                          leave=False):
+            x_t = batch["x_t"].to(device)
+            y_t = batch["y_t"].to(device)
+
+            y_pred = model(x_t)
+            loss   = criterion(y_pred, y_t)
+
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            total_loss += loss.item()
+
+        scheduler.step()
+        avg_train = total_loss / len(train_loader)
+
+        # --- validation ---
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for batch in val_loader:
+                x_t = batch["x_t"].to(device)
+                y_t = batch["y_t"].to(device)
+                y_pred = model(x_t)
+                val_loss += criterion(y_pred, y_t).item()
+        avg_val = val_loss / len(val_loader)
+
+        print(f"Epoch {epoch:3d} | train_L_decomp={avg_train:.5f} "
+              f"| val_L_decomp={avg_val:.5f}")
+
+        ckpt_path = os.path.join(ckpt_dir, "stage1_latest.pt")
+        torch.save({"epoch": epoch, "model": model.state_dict(),
+                    "optimizer": optimizer.state_dict()}, ckpt_path)
+
+        if avg_val < best_val:
+            best_val = avg_val
+            best_path = os.path.join(ckpt_dir, "stage1_best.pt")
+            torch.save({"epoch": epoch, "val_loss": avg_val,
+                        "model": model.state_dict()}, best_path)
+            print(f"  ↑ New best val saved: {best_path}")
+
+    print(f"Stage 1 done. Best val L_decomp = {best_val:.5f}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config.yaml")
+    args = parser.parse_args()
+    with open(args.config, "r") as f:
+        cfg = yaml.safe_load(f)
+    train_stage1(cfg, args)
+
+
+================================================================================
+STEP 6 — train_stage2_step_traj.py   (save to: body_motion/lmm_train/train/train_stage2_step_traj.py)
+================================================================================
+
+"""
+Stage 2: Train StepperNet + Text2Traj (TextProj + DistilBERT frozen).
+Losses:
+  L_step = MSE(Stepper(x_t, c_t), x_{t+1})
+  L_traj = MSE(Text2Traj(e), traj_t)
+
+Run:
+    python train/train_stage2_step_traj.py --config config.yaml
+"""
+
+import os
+import sys
+import argparse
+import yaml
+import random
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from data.dataset import HumanML3DDataset
+from models.lmm_nets import StepperNet
+from models.text_encoder import TextEncoder
+
+
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def collate_fn(batch):
+    keys = ["x_t", "x_next", "y_t", "state_t", "traj_t"]
+    out  = {k: torch.stack([s[k] for s in batch]) for k in keys}
+    out["caption"] = [s["caption"] for s in batch]
+    return out
+
+
+def train_stage2(cfg: dict, args):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    set_seed(cfg.get("seed", 42))
+
+    feature_dim  = cfg["feature_dim"]
+    control_dim  = cfg["control_dim"]   # traj_dim + D_e = 10 + 64 = 74
+    traj_dim     = cfg["traj_dim"]
+    D_e          = cfg.get("D_e", 64)
+    hidden       = cfg.get("hidden", 512)
+    lr           = cfg.get("lr", 1e-4)
+    batch_size   = cfg.get("batch_size", 256)
+    epochs       = cfg.get("epochs_stage2", 30)
+    ckpt_dir     = cfg.get("checkpoint_dir", "checkpoints")
+    data_root    = cfg["data_root"]
+    text_cache_path = cfg.get("text_cache", "caches/text_emb_cache.pt")
+
+    os.makedirs(ckpt_dir, exist_ok=True)
+
+    text_cache = {}
+    if os.path.exists(text_cache_path):
+        text_cache = torch.load(text_cache_path, map_location="cpu")
+        print(f"Loaded text cache with {len(text_cache)} entries.")
+
+    train_ds = HumanML3DDataset(data_root, split="train",
+                                text_cache=text_cache)
+    val_ds   = HumanML3DDataset(data_root, split="val",
+                                text_cache=text_cache)
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+                              num_workers=4, pin_memory=True,
+                              collate_fn=collate_fn, drop_last=True)
+    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False,
+                              num_workers=2, pin_memory=True,
+                              collate_fn=collate_fn, drop_last=False)
+
+    text_enc = TextEncoder(D_e=D_e, traj_dim=traj_dim).to(device)
+    stepper  = StepperNet(feature_dim=feature_dim,
+                          control_dim=control_dim, hidden=hidden).to(device)
+
+    trainable_params = (
+        list(text_enc.text_proj.parameters()) +
+        list(text_enc.text2traj.parameters()) +
+        list(stepper.parameters())
+    )
+
+    optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=epochs)
+
+    criterion = nn.MSELoss()
+    best_val  = float("inf")
+
+    def get_text_emb(captions):
+        batch_embs = []
+        for cap in captions:
+            if cap in text_cache:
+                batch_embs.append(text_cache[cap])
+            else:
+                emb = text_enc.encode_raw([cap], device).squeeze(0).cpu()
+                batch_embs.append(emb)
+        return torch.stack(batch_embs).to(device)   # (B, 768)
+
+    for epoch in range(1, epochs + 1):
+        text_enc.train()
+        stepper.train()
+        total_step = total_traj = 0.0
+
+        for batch in tqdm(train_loader,
+                          desc=f"[Stage2] Epoch {epoch}/{epochs}", leave=False):
+            x_t    = batch["x_t"].to(device)
+            x_next = batch["x_next"].to(device)
+            traj_t = batch["traj_t"].to(device)
+
+            emb_768 = get_text_emb(batch["caption"])
+            e, traj_pred = text_enc(emb_768)
+
+            c_t    = torch.cat([traj_t, e], dim=-1)
+
+            x_pred = stepper(x_t, c_t)
+            L_step = criterion(x_pred, x_next)
+            L_traj = criterion(traj_pred, traj_t)
+            loss   = L_step + L_traj
+
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(trainable_params, 1.0)
+            optimizer.step()
+
+            total_step += L_step.item()
+            total_traj += L_traj.item()
+
+        scheduler.step()
+        avg_step = total_step / len(train_loader)
+        avg_traj = total_traj / len(train_loader)
+
+        # --- validation ---
+        text_enc.eval(); stepper.eval()
+        val_step = val_traj = 0.0
+        with torch.no_grad():
+            for batch in val_loader:
+                x_t    = batch["x_t"].to(device)
+                x_next = batch["x_next"].to(device)
+                traj_t = batch["traj_t"].to(device)
+                emb_768 = get_text_emb(batch["caption"])
+                e, traj_pred = text_enc(emb_768)
+                c_t = torch.cat([traj_t, e], dim=-1)
+                x_pred = stepper(x_t, c_t)
+                val_step += criterion(x_pred, x_next).item()
+                val_traj += criterion(traj_pred, traj_t).item()
+
+        avg_val_step = val_step / len(val_loader)
+        avg_val_traj = val_traj / len(val_loader)
+        avg_val = avg_val_step + avg_val_traj
+
+        print(f"Epoch {epoch:3d} | "
+              f"L_step={avg_step:.5f} L_traj={avg_traj:.5f} | "
+              f"val_step={avg_val_step:.5f} val_traj={avg_val_traj:.5f}")
+
+        ckpt = {"epoch": epoch,
+                "stepper": stepper.state_dict(),
+                "text_enc": text_enc.state_dict()}
+        torch.save(ckpt, os.path.join(ckpt_dir, "stage2_latest.pt"))
+
+        if avg_val < best_val:
+            best_val = avg_val
+            torch.save(ckpt, os.path.join(ckpt_dir, "stage2_best.pt"))
+            print(f"  ↑ New best val saved")
+
+    print(f"Stage 2 done. Best val total = {best_val:.5f}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config.yaml")
+    args = parser.parse_args()
+    with open(args.config, "r") as f:
+        cfg = yaml.safe_load(f)
+    train_stage2(cfg, args)
+
+
+================================================================================
+STEP 7 — train_stage3_projector.py   (save to: body_motion/lmm_train/train/train_stage3_projector.py)
+================================================================================
+
+"""
+Stage 3: Train ProjectorNet.
+Loss: L_proj = MSE(Projector(q_t), x_star)
+      x_star = x_t  (V1 simple supervision)
+Optional: L_recon = MSE(Decompressor(Projector(q_t)), y_t)
+
+Run:
+    python train/train_stage3_projector.py --config config.yaml
+"""
+
+import os
+import sys
+import argparse
+import yaml
+import random
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from data.dataset import HumanML3DDataset
+from models.lmm_nets import ProjectorNet, DecompressorNet
+from models.text_encoder import TextEncoder
+
+
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def collate_fn(batch):
+    keys = ["x_t", "x_next", "y_t", "state_t", "traj_t"]
+    out  = {k: torch.stack([s[k] for s in batch]) for k in keys}
+    out["caption"] = [s["caption"] for s in batch]
+    return out
+
+
+def train_stage3(cfg: dict, args):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    set_seed(cfg.get("seed", 42))
+
+    feature_dim = cfg["feature_dim"]
+    pose_dim    = cfg["pose_dim"]
+    query_dim   = cfg["query_dim"]     # state_dim + traj_dim + D_e = 6+10+64=80
+    traj_dim    = cfg["traj_dim"]
+    D_e         = cfg.get("D_e", 64)
+    hidden      = cfg.get("hidden", 512)
+    lr          = cfg.get("lr", 1e-4)
+    batch_size  = cfg.get("batch_size", 256)
+    epochs      = cfg.get("epochs_stage3", 30)
+    ckpt_dir    = cfg.get("checkpoint_dir", "checkpoints")
+    data_root   = cfg["data_root"]
+    text_cache_path = cfg.get("text_cache", "caches/text_emb_cache.pt")
+    use_recon   = cfg.get("use_recon_loss", False)
+
+    os.makedirs(ckpt_dir, exist_ok=True)
+
+    text_cache = {}
+    if os.path.exists(text_cache_path):
+        text_cache = torch.load(text_cache_path, map_location="cpu")
+
+    train_ds = HumanML3DDataset(data_root, split="train",
+                                text_cache=text_cache)
+    val_ds   = HumanML3DDataset(data_root, split="val",
+                                text_cache=text_cache)
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+                              num_workers=4, pin_memory=True,
+                              collate_fn=collate_fn, drop_last=True)
+    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False,
+                              num_workers=2, pin_memory=True,
+                              collate_fn=collate_fn, drop_last=False)
+
+    # Load frozen text encoder from stage2 checkpoint
+    text_enc = TextEncoder(D_e=D_e, traj_dim=traj_dim).to(device)
+    s2_ckpt  = os.path.join(ckpt_dir, "stage2_best.pt")
+    if os.path.exists(s2_ckpt):
+        ckpt = torch.load(s2_ckpt, map_location=device)
+        text_enc.load_state_dict(ckpt["text_enc"], strict=False)
+        print(f"Loaded stage2 text_enc from {s2_ckpt}")
+    for p in text_enc.parameters():
+        p.requires_grad_(False)
+    text_enc.eval()
+
+    # Load frozen decompressor for optional recon loss
+    decomp = DecompressorNet(feature_dim=feature_dim,
+                             pose_dim=pose_dim, hidden=hidden).to(device)
+    s1_ckpt = os.path.join(ckpt_dir, "stage1_best.pt")
+    if os.path.exists(s1_ckpt):
+        ckpt = torch.load(s1_ckpt, map_location=device)
+        decomp.load_state_dict(ckpt["model"], strict=False)
+        print(f"Loaded stage1 decompressor from {s1_ckpt}")
+    for p in decomp.parameters():
+        p.requires_grad_(False)
+    decomp.eval()
+
+    proj = ProjectorNet(query_dim=query_dim, feature_dim=feature_dim,
+                        hidden=hidden, dropout=0.3).to(device)
+
+    optimizer = torch.optim.AdamW(proj.parameters(),
+                                  lr=lr, weight_decay=1e-2)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=epochs)
+
+    criterion = nn.MSELoss()
+    best_val  = float("inf")
+
+    def get_text_emb(captions):
+        batch_embs = []
+        for cap in captions:
+            if cap in text_cache:
+                batch_embs.append(text_cache[cap])
+            else:
+                emb = text_enc.encode_raw([cap], device).squeeze(0).cpu()
+                batch_embs.append(emb)
+        return torch.stack(batch_embs).to(device)
+
+    for epoch in range(1, epochs + 1):
+        proj.train()
+        total_proj = total_recon = 0.0
+
+        for batch in tqdm(train_loader,
+                          desc=f"[Stage3] Epoch {epoch}/{epochs}", leave=False):
+            x_t     = batch["x_t"].to(device)      # x_star (V1: x_t)
+            y_t     = batch["y_t"].to(device)
+            state_t = batch["state_t"].to(device)
+            traj_t  = batch["traj_t"].to(device)
+
+            with torch.no_grad():
+                emb_768 = get_text_emb(batch["caption"])
+                e, _ = text_enc(emb_768)
+
+            q_t = torch.cat([state_t, traj_t, e], dim=-1)   # (B, 80)
+            x_star_pred = proj(q_t)
+
+            L_proj = criterion(x_star_pred, x_t)
+            loss   = L_proj
+
+            if use_recon:
+                with torch.no_grad():
+                    y_star = decomp(x_t)
+                y_recon = decomp(x_star_pred)
+                L_recon = criterion(y_recon, y_star)
+                loss = loss + 0.1 * L_recon
+                total_recon += L_recon.item()
+
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(proj.parameters(), 1.0)
+            optimizer.step()
+            total_proj += L_proj.item()
+
+        scheduler.step()
+        avg_proj  = total_proj  / len(train_loader)
+        avg_recon = total_recon / len(train_loader) if use_recon else 0.0
+
+        # --- validation ---
+        proj.eval()
+        val_proj = 0.0
+        with torch.no_grad():
+            for batch in val_loader:
+                x_t     = batch["x_t"].to(device)
+                state_t = batch["state_t"].to(device)
+                traj_t  = batch["traj_t"].to(device)
+                emb_768 = get_text_emb(batch["caption"])
+                e, _    = text_enc(emb_768)
+                q_t     = torch.cat([state_t, traj_t, e], dim=-1)
+                x_star_pred = proj(q_t)
+                val_proj += criterion(x_star_pred, x_t).item()
+
+        avg_val = val_proj / len(val_loader)
+        print(f"Epoch {epoch:3d} | L_proj={avg_proj:.5f} "
+              f"L_recon={avg_recon:.5f} | val_proj={avg_val:.5f}")
+
+        ckpt = {"epoch": epoch, "proj": proj.state_dict()}
+        torch.save(ckpt, os.path.join(ckpt_dir, "stage3_latest.pt"))
+
+        if avg_val < best_val:
+            best_val = avg_val
+            torch.save(ckpt, os.path.join(ckpt_dir, "stage3_best.pt"))
+            print(f"  ↑ New best val saved")
+
+    print(f"Stage 3 done. Best val L_proj = {best_val:.5f}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config.yaml")
+    args = parser.parse_args()
+    with open(args.config, "r") as f:
+        cfg = yaml.safe_load(f)
+    train_stage3(cfg, args)
+
+
+================================================================================
+STEP 8 — infer_rollout.py   (save to: body_motion/lmm_train/infer/infer_rollout.py)
+================================================================================
+
+"""
+Inference rollout: text prompt → joint sequence @ 30fps → export .npz
+
+Usage:
+    python infer/infer_rollout.py \
+        --prompt "a person walks forward" \
+        --frames 60 \
+        --seed 0 \
+        --ckpt_dir checkpoints/ \
+        --config config.yaml \
+        --out export/lmm_out_walk.npz
+"""
+
+import os
+import sys
+import argparse
+import yaml
+import datetime
+import numpy as np
+import torch
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from models.text_encoder import TextEncoder
+from models.lmm_nets import DecompressorNet, StepperNet, ProjectorNet
+
+
+def resample_joints(joints_native: np.ndarray,
+                    fps_in: int = 20, fps_out: int = 30) -> np.ndarray:
+    """
+    Linear interpolation of joint sequence from fps_in to fps_out.
+    joints_native: (T_in, 22, 3)
+    Returns: (T_out, 22, 3)
+    """
+    T_in = joints_native.shape[0]
+    dur  = (T_in - 1) / fps_in          # duration in seconds
+    T_out = int(round(dur * fps_out)) + 1
+
+    t_in  = np.linspace(0, 1, T_in)
+    t_out = np.linspace(0, 1, T_out)
+
+    joints_out = np.zeros((T_out, 22, 3), dtype=np.float32)
+    for j in range(22):
+        for ax in range(3):
+            joints_out[:, j, ax] = np.interp(t_out, t_in,
+                                              joints_native[:, j, ax])
+    return joints_out
+
+
+def export_npz(joints_30fps: np.ndarray, prompt: str, seed: int,
+               out_path: str):
+    """Save export NPZ matching §8 schema."""
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    T30 = joints_30fps.shape[0]
+    np.savez(out_path,
+             schema_version    = np.int32(1),
+             ok                = True,
+             joint_format      = "humanml3d_joints22",
+             fps               = np.int32(30),
+             frames            = np.int32(T30),
+             joints            = joints_30fps.astype(np.float32),
+             meta_prompt       = prompt,
+             meta_seed         = np.int32(seed),
+             meta_model_name   = "learned_mm_text_humanml3d_v1",
+             meta_text_encoder = "distilbert-base-uncased",
+             meta_D_e          = np.int32(64),
+             meta_up_axis      = "y",
+             meta_units        = "m",
+             meta_n_joints     = np.int32(22))
+    print(f"Saved → {out_path}  joints shape: {joints_30fps.shape}  fps: 30")
+
+
+def export_npz_error(out_path: str, error: str):
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    np.savez(out_path, ok=False, error=error)
+    print(f"Saved error NPZ → {out_path}: {error}")
+
+
+def run_rollout(cfg: dict, args):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.manual_seed(args.seed)
+
+    feature_dim = cfg["feature_dim"]   # 263
+    pose_dim    = cfg["pose_dim"]      # 66
+    traj_dim    = cfg["traj_dim"]      # 10
+    state_dim   = cfg["state_dim"]     # 6
+    control_dim = cfg["control_dim"]   # 74
+    query_dim   = cfg["query_dim"]     # 80
+    D_e         = cfg.get("D_e", 64)
+    hidden      = cfg.get("hidden", 512)
+    fps_native  = cfg.get("fps_native", 20)
+    fps_export  = cfg.get("fps_export", 30)
+    ckpt_dir    = cfg.get("checkpoint_dir", "checkpoints")
+
+    # T_native: frames at fps_native to produce args.frames at fps_export
+    T_native = max(2, int(round(args.frames * fps_native / fps_export)))
+
+    # --- load models ---
+    text_enc = TextEncoder(D_e=D_e, traj_dim=traj_dim).to(device)
+    decomp   = DecompressorNet(feature_dim=feature_dim,
+                               pose_dim=pose_dim, hidden=hidden).to(device)
+    stepper  = StepperNet(feature_dim=feature_dim,
+                          control_dim=control_dim, hidden=hidden).to(device)
+    proj     = ProjectorNet(query_dim=query_dim,
+                            feature_dim=feature_dim,
+                            hidden=hidden, dropout=0.3).to(device)
+
+    s1 = os.path.join(ckpt_dir, "stage1_best.pt")
+    s2 = os.path.join(ckpt_dir, "stage2_best.pt")
+    s3 = os.path.join(ckpt_dir, "stage3_best.pt")
+
+    if os.path.exists(s1):
+        decomp.load_state_dict(
+            torch.load(s1, map_location=device)["model"], strict=False)
+    if os.path.exists(s2):
+        ckpt2 = torch.load(s2, map_location=device)
+        stepper.load_state_dict(ckpt2["stepper"], strict=False)
+        text_enc.load_state_dict(ckpt2["text_enc"], strict=False)
+    if os.path.exists(s3):
+        proj.load_state_dict(
+            torch.load(s3, map_location=device)["proj"], strict=False)
+
+    text_enc.eval(); decomp.eval(); stepper.eval(); proj.eval()
+
+    try:
+        # --- Step 1: encode prompt ---
+        with torch.no_grad():
+            emb_768 = text_enc.encode_raw([args.prompt], device)   # (1, 768)
+            e, traj = text_enc(emb_768)                            # (1,64), (1,10)
+
+        # --- Step 2: init state (zeros = rest pose) ---
+        state0 = torch.zeros(1, state_dim, device=device)
+
+        # --- Step 3: initial x via Projector ---
+        with torch.no_grad():
+            q0 = torch.cat([state0, traj, e], dim=-1)   # (1, 80)
+            x  = proj(q0)                               # (1, 263)
+
+        # --- Step 4: rollout ---
+        joints_seq = []
+        reproject_every = 10   # every K frames re-project
+
+        with torch.no_grad():
+            for t in range(T_native):
+                y = decomp(x)                              # (1, 66)
+                joints_frame = y.cpu().numpy().reshape(22, 3)
+                joints_seq.append(joints_frame)
+
+                c = torch.cat([traj, e], dim=-1)           # (1, 74)
+                x = stepper(x, c)                          # (1, 263)
+
+                if (t + 1) % reproject_every == 0:
+                    state_t = torch.zeros(1, state_dim, device=device)
+                    q_t = torch.cat([state_t, traj, e], dim=-1)
+                    x_star = proj(q_t)
+                    x = 0.5 * x + 0.5 * x_star
+
+        joints_native = np.stack(joints_seq, axis=0)       # (T_native, 22, 3)
+
+        # --- Step 5: resample to 30fps ---
+        joints_30fps = resample_joints(joints_native, fps_native, fps_export)
+        joints_30fps = joints_30fps[:args.frames]          # trim to exact count
+
+        export_npz(joints_30fps, args.prompt, args.seed, args.out)
+
+    except Exception as exc:
+        export_npz_error(args.out, str(exc))
+        raise
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="LMM inference: text → joints NPZ")
+    parser.add_argument("--prompt",   type=str, required=True)
+    parser.add_argument("--frames",   type=int, default=60,
+                        help="Output frames at 30fps")
+    parser.add_argument("--seed",     type=int, default=0)
+    parser.add_argument("--ckpt_dir", type=str, default="checkpoints")
+    parser.add_argument("--config",   type=str, default="config.yaml")
+    parser.add_argument("--out",      type=str,
+                        default=None,
+                        help="Output .npz path (auto-named if not given)")
+    args = parser.parse_args()
+
+    if args.out is None:
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.out = f"export/lmm_out_{stamp}.npz"
+
+    with open(args.config, "r") as f:
+        cfg = yaml.safe_load(f)
+    run_rollout(cfg, args)
+
+
+================================================================================
+STEP 9 — config.yaml   (save to: body_motion/lmm_train/config.yaml)
+================================================================================
+
+# ============================================================
+#  LMM Training Config — projface_v1
+#  LOCKED dims from STEP 1 verify_data PASS
+# ============================================================
+
+# --- Data ---
+data_root:    "/path/to/humanml3d"    # CHANGE: set to your DATA_ROOT
+text_cache:   "caches/text_emb_cache.pt"
+
+# --- LOCKED DIMS (DO NOT CHANGE) ---
+feature_dim:  263   # D from new_joint_vecs
+pose_dim:     66    # 22 * 3  from new_joints
+n_joints:     22
+fps_native:   20    # train at native HumanML3D FPS
+fps_export:   30    # resample at export only
+
+# --- Geometry dims ---
+traj_dim:     10    # 5 horizons * 2 (xz)
+state_dim:    6     # vel_xz(2) + face_xz(2) + foot_contact(2)
+
+# --- Derived dims (DO NOT CHANGE) ---
+D_e:          64    # TextProj output
+control_dim:  74    # traj_dim + D_e  = 10 + 64
+query_dim:    80    # state_dim + traj_dim + D_e = 6 + 10 + 64
+
+# --- Model ---
+distilbert_name: "distilbert-base-uncased"
+hidden:       512
+
+# --- Training ---
+seed:         42
+batch_size:   256
+lr:           1e-4
+
+epochs_stage1: 30
+epochs_stage2: 30
+epochs_stage3: 30
+
+use_recon_loss: false   # set true to enable 0.1 * L_recon in stage 3
+
+# --- Paths ---
+checkpoint_dir: "checkpoints"
+export_dir:     "export"
+
+
+================================================================================
+STEP 9 — README.md   (save to: body_motion/lmm_train/README.md)
+================================================================================
+
+# LMM Training — Text-Conditioned Learned Motion Matching
+**Project:** projface_v1  
+**Architecture:** Holden 2020 LMM + DistilBERT text conditioning  
+**Dataset:** Kaggle `mrriandmstique/humanml3d`
+
+---
+
+## Repo Layout
+
+    body_motion/lmm_train/
+    ├── config.yaml
+    ├── README.md
+    ├── data/
+    │   ├── dataset.py          # HumanML3D loader
+    │   ├── geometry.py         # state + trajectory features from joints
+    │   └── text_cache.py       # precompute DistilBERT embeddings
+    ├── models/
+    │   ├── text_encoder.py     # DistilBERT frozen + TextProj + Text2Traj
+    │   └── lmm_nets.py         # Decompressor, Stepper, Projector
+    ├── train/
+    │   ├── train_stage1_decomp.py
+    │   ├── train_stage2_step_traj.py
+    │   └── train_stage3_projector.py
+    ├── infer/
+    │   └── infer_rollout.py
+    ├── scripts/
+    │   └── verify_data.py      # (Step 1 — already PASSED)
+    ├── caches/                 # auto-created; stores text_emb_cache.pt
+    ├── checkpoints/            # auto-created; stores .pt files
+    └── export/                 # auto-created; stores .npz outputs
+
+---
+
+## Setup
+
+```bash
+pip install torch transformers tqdm pyyaml numpy scipy
+```
+
+Edit **config.yaml** and set `data_root` to your extracted HumanML3D path.
+
+---
+
+## Step-by-step Run
+
+### 0. Edit config.yaml
+Set `data_root` to your local HumanML3D path.
+
+### 1. Verify data (already PASSED — skip if done)
+```bash
+python scripts/verify_data.py --data_root $DATA_ROOT
+```
+
+### 2. (Optional) Pre-cache text embeddings — speeds up training significantly
+```bash
+python data/text_cache.py --data_root $DATA_ROOT --out caches/text_emb_cache.pt
+```
+
+### 3. Train Stage 1 — Decompressor
+```bash
+python train/train_stage1_decomp.py --config config.yaml
+```
+Saves: `checkpoints/stage1_best.pt`
+
+### 4. Train Stage 2 — Stepper + Text2Traj
+```bash
+python train/train_stage2_step_traj.py --config config.yaml
+```
+Saves: `checkpoints/stage2_best.pt`
+
+### 5. Train Stage 3 — Projector
+```bash
+python train/train_stage3_projector.py --config config.yaml
+```
+Saves: `checkpoints/stage3_best.pt`
+
+### 6. Inference — generate motion from text
+```bash
+python infer/infer_rollout.py \
+    --prompt "a person walks forward" \
+    --frames 60 \
+    --seed 0 \
+    --ckpt_dir checkpoints/ \
+    --config config.yaml \
+    --out export/lmm_out_walk.npz
+```
+
+---
+
+## Output Format
+The `.npz` file contains:
+
+| Key                | Value                              |
+|--------------------|------------------------------------|
+| `joints`           | `float32 (T, 22, 3)` @ 30 fps     |
+| `joint_format`     | `"humanml3d_joints22"`             |
+| `fps`              | `30`                               |
+| `ok`               | `True`                             |
+| `meta_prompt`      | your prompt string                 |
+| `meta_model_name`  | `"learned_mm_text_humanml3d_v1"`   |
+
+---
+
+## Locked Dimensions (from verify_data PASS)
+| Param         | Value |
+|---------------|-------|
+| feature_dim   | 263   |
+| pose_dim      | 66    |
+| n_joints      | 22    |
+| fps_native    | 20    |
+| fps_export    | 30    |
+| traj_dim      | 10    |
+| state_dim     | 6     |
+| D_e           | 64    |
+| control_dim   | 74    |
+| query_dim     | 80    |
+
+---
+
+## Acceptance Tests
+- [ ] `verify_data PASS`: D=263, joints (T,22,3), Mean/Std (263,)
+- [ ] One batch forward pass stage 1 runs without shape error
+- [ ] Decompressor output shape (B, 66)
+- [ ] Stepper output shape (B, 263)
+- [ ] Projector output shape (B, 263)
+- [ ] TextProj output shape (B, 64)
+- [ ] infer writes npz with joints (T,22,3), fps=30, joint_format=humanml3d_joints22
+- [ ] No diffusion / T2M imports anywhere in project
+
+================================================================================
+END OF CODE FILE
+  All steps 2–9 are contained above.
+  Step 1 (verify_data.py) was already run and PASSED.
+  LOCKED: feature_dim=263, pose_dim=66, fps_native=20, fps_export=30
+================================================================================

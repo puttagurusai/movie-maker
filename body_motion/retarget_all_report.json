@@ -1,0 +1,331 @@
+{
+  "out": "C:\\me\\proj\\projface_v1\\whole_body_retargeted.blend",
+  "map": "C:\\me\\proj\\projface_v1\\body_motion\\FINAL_BONE_MAP.json",
+  "fps": 30,
+  "results": [
+    {
+      "action": "idle",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        181
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 5,
+      "right_shoulder_delta": 1.102,
+      "seconds": 20.9
+    },
+    {
+      "action": "walk",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        32
+      ],
+      "root_mode": "location",
+      "hip_travel": 0.0,
+      "channels_changing": 45,
+      "right_shoulder_delta": 0.8958,
+      "seconds": 4.3
+    },
+    {
+      "action": "walk_back",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        37
+      ],
+      "root_mode": "location",
+      "hip_travel": 0.0,
+      "channels_changing": 101,
+      "right_shoulder_delta": 1.2123,
+      "seconds": 5.4
+    },
+    {
+      "action": "run",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        22
+      ],
+      "root_mode": "location",
+      "hip_travel": 0.0,
+      "channels_changing": 66,
+      "right_shoulder_delta": 0.951,
+      "seconds": 3.4
+    },
+    {
+      "action": "sit_idle",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        130
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 1,
+      "right_shoulder_delta": 0.9303,
+      "seconds": 15.5
+    },
+    {
+      "action": "turn_left",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        50
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 55,
+      "right_shoulder_delta": 1.0346,
+      "seconds": 5.8
+    },
+    {
+      "action": "turn_right",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        29
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 46,
+      "right_shoulder_delta": 1.0346,
+      "seconds": 3.7
+    },
+    {
+      "action": "talk_open",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        119
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 60,
+      "right_shoulder_delta": 1.1758,
+      "seconds": 14.2
+    },
+    {
+      "action": "talk_emphasize",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        235
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 65,
+      "right_shoulder_delta": 1.0236,
+      "seconds": 42.7
+    },
+    {
+      "action": "wave",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        142
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 19,
+      "right_shoulder_delta": 1.3407,
+      "seconds": 25.2
+    },
+    {
+      "action": "shrug",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        45
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 30,
+      "right_shoulder_delta": 1.0832,
+      "seconds": 5.2
+    },
+    {
+      "action": "point",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        84
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 58,
+      "right_shoulder_delta": 1.2729,
+      "seconds": 8.8
+    },
+    {
+      "action": "recoil",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        111
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 55,
+      "right_shoulder_delta": 0.9666,
+      "seconds": 13.8
+    },
+    {
+      "action": "think",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        236
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 32,
+      "right_shoulder_delta": 0.9129,
+      "seconds": 26.2
+    },
+    {
+      "action": "nod_yes",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        79
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 5,
+      "right_shoulder_delta": 1.0348,
+      "seconds": 9.3
+    },
+    {
+      "action": "shake_no",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        55
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 16,
+      "right_shoulder_delta": 1.0368,
+      "seconds": 6.7
+    },
+    {
+      "action": "agree",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        142
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 74,
+      "right_shoulder_delta": 1.1302,
+      "seconds": 16.8
+    },
+    {
+      "action": "celebrate",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        37
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 6,
+      "right_shoulder_delta": 1.1384,
+      "seconds": 4.0
+    },
+    {
+      "action": "hands_reject",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        68
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 22,
+      "right_shoulder_delta": 1.2409,
+      "seconds": 7.9
+    },
+    {
+      "action": "tense",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        74
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 25,
+      "right_shoulder_delta": 1.0346,
+      "seconds": 9.0
+    },
+    {
+      "action": "slump",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        85
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 33,
+      "right_shoulder_delta": 0.8171,
+      "seconds": 11.0
+    },
+    {
+      "action": "bow",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        91
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 76,
+      "right_shoulder_delta": 1.0313,
+      "seconds": 10.8
+    },
+    {
+      "action": "look_around",
+      "ok": true,
+      "pairs": 52,
+      "frames": [
+        1,
+        236
+      ],
+      "root_mode": "inplace",
+      "hip_travel": 0.0,
+      "channels_changing": 32,
+      "right_shoulder_delta": 0.9129,
+      "seconds": 26.3
+    }
+  ],
+  "ok_count": 23,
+  "total": 23
+}

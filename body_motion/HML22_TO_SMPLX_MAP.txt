@@ -1,0 +1,106 @@
+================================================================================
+  Correct mapping: MoMask / HumanML3D → SMPL-X_Armature (projface)
+================================================================================
+
+STATUS
+  LMM custom training is ON HOLD (not in pipeline for now).
+  MoMask is the text→motion engine when needed.
+  Mapping below is the official correspondence for retarget.
+
+--------------------------------------------------------------------------------
+1. HumanML3D joint index (22) — EricGuo paramUtil / MoMask
+--------------------------------------------------------------------------------
+  t2m_kinematic_chain:
+    right leg:  0 → 2 → 5 → 8 → 11
+    left leg:   0 → 1 → 4 → 7 → 10
+    spine:      0 → 3 → 6 → 9 → 12 → 15
+    right arm:  9 → 14 → 17 → 19 → 21
+    left arm:   9 → 13 → 16 → 18 → 20
+
+  Index → name
+    0  pelvis / Hips
+    1  left_hip / LeftUpLeg
+    2  right_hip / RightUpLeg
+    3  spine1 / Spine
+    4  left_knee / LeftLeg
+    5  right_knee / RightLeg
+    6  spine2 / Spine1
+    7  left_ankle / LeftFoot
+    8  right_ankle / RightFoot
+    9  spine3 / Spine2
+    10 left_foot / LeftToe
+    11 right_foot / RightToe
+    12 neck / Neck
+    13 left_collar / LeftShoulder
+    14 right_collar / RightShoulder
+    15 head / Head
+    16 left_shoulder / LeftArm
+    17 right_shoulder / RightArm
+    18 left_elbow / LeftForeArm
+    19 right_elbow / RightForeArm
+    20 left_wrist / LeftHand
+    21 right_wrist / RightHand
+
+  Coords: Y-up (height = Y). FPS native 20; pipeline export often 30.
+
+--------------------------------------------------------------------------------
+2. MoMask BVH template bone → our SMPL-X_Armature
+--------------------------------------------------------------------------------
+  (Used by tools/apply_lmm_npz_to_smplx.py after joints→BVH IK)
+
+  Hips          → pelvis
+  LeftUpLeg     → left_hip
+  LeftLeg       → left_knee
+  LeftFoot      → left_ankle
+  LeftToe       → left_foot
+  RightUpLeg    → right_hip
+  RightLeg      → right_knee
+  RightFoot     → right_ankle
+  RightToe      → right_foot
+  Spine         → spine1
+  Spine1        → spine2
+  Spine2        → spine3
+  Neck          → neck
+  Head          → head
+  LeftShoulder  → left_collar
+  LeftArm       → left_shoulder
+  LeftForeArm   → left_elbow
+  LeftHand      → left_wrist
+  RightShoulder → right_collar
+  RightArm      → right_shoulder
+  RightForeArm  → right_elbow
+  RightHand     → right_wrist
+
+  NOT mapped (leave rest / face pipeline):
+    jaw, eyes, all finger bones
+
+--------------------------------------------------------------------------------
+3. Why pure position→quat failed on our rig
+--------------------------------------------------------------------------------
+  SMPL-X_Armature bone tails mostly point +Z (display), NOT along the limb.
+  Rest directions must come from parent/child joint heads or from MoMask BVH IK,
+  not bone head→tail vectors.
+
+  Correct product path:
+    MoMask joints → MoMask BVH (official IK) → constraint bake → SMPL-X Action
+
+--------------------------------------------------------------------------------
+4. How to apply (when you resume body-from-text)
+--------------------------------------------------------------------------------
+  # A) joints NPZ → BVH (momask venv)
+  .\third_party\momask_venv\Scripts\python.exe tools\momask_joints_to_bvh.py `
+    --npz "lmm train\momask_walk.npz" --out "lmm train\momask_walk.bvh" --ik
+
+  # B) BVH → SMPL-X Action
+  blender.exe whole_body_retargeted.blend --python tools\apply_lmm_npz_to_smplx.py -- `
+    --bvh "lmm train\momask_walk.bvh" --action momask_walk `
+    --out body_motion\_momask_applied.blend
+
+--------------------------------------------------------------------------------
+5. Pipeline engines (current product intent)
+--------------------------------------------------------------------------------
+  Face:     blender_receiver face/viseme (unchanged)
+  Body known: Mixamo retarget clips (catalog)
+  Body open text: MoMask (when enabled) — NOT custom LMM for now
+
+================================================================================

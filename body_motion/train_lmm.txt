@@ -1,0 +1,623 @@
+================================================================================
+  train_lmm.txt
+  GENERAL Language-to-Motion (LMM) — LARGE DATASET TRAINING + TEXT INTEGRATION
+  + how it plugs into projface_v1 after training
+================================================================================
+
+  PURPOSE
+  -------
+  Train a GENERAL text-to-motion model on LARGE public motion+language datasets
+  so the system can produce MANY motions from text — not only our ~23 Mixamo clips.
+
+  Our catalog clips remain a SEPARATE engine (clip_catalog) for reliable loops
+  (idle/walk) and known gestures. LMM is the GENERAL motion engine.
+
+  This guide = large-scale LMM train + text conditioning + pipeline integration.
+  It is NOT "finetune only on our wave/shrug actions."
+
+
+================================================================================
+1. GOAL
+================================================================================
+
+  Train:
+      text (natural language)  →  human motion sequence (general)
+
+  Integrate:
+      same text / director intent
+        → Text→LMM controller (prompting + length + seed)
+        → LmmEngine.generate()
+        → map poses → SMPL-X_Armature in Blender
+        → face pipeline stays separate (no mouth from LMM)
+
+  Product routing:
+      engine = "lmm"     → general / open-ended / no clip match
+      engine = "clip"    → known catalog Actions (optional fallback)
+
+
+================================================================================
+2. WHAT “GENERAL LMM” MEANS
+================================================================================
+
+  Input:
+    - Free-form text captions ("a person dances happily", "slow walk then stop")
+    - Optional structured tags (action class, emotion) if dataset provides them
+
+  Output:
+    - Multi-second full-body motion for diverse activities
+    - Not limited to our catalog vocabulary
+
+  Representation (standard for large datasets):
+    - SMPL or SMPL-H / SMPL-X pose parameters over time
+    - Common: root + body joint rotations (axis-angle or 6D continuous)
+    - FPS often 20 or 30 — resample to 30 for our Blender receiver
+
+  After train, a FIXED converter maps model joints → our Blender bones
+  (FINAL_BONE_MAP / joint bridge). That adapter is small; the MODEL is general.
+
+
+================================================================================
+3. LARGE DATASETS (PRIMARY TRAIN DATA)
+================================================================================
+
+  Use as many as license + disk + GPU allow. Combine when formats can be unified.
+
+  >>> For Colab / Kaggle picks and tiers, see Section 3.5 below. <<<
+
+  ----------------------------------------------------------------------------
+  3.1 Core text–motion pairs (required for LMM)
+  ----------------------------------------------------------------------------
+
+  [1] HumanML3D  (strongly recommended baseline)
+      - Text captions + motion (SMPL-based pipeline in community code)
+      - Standard for MDM / T2M / MoMask / etc.
+      - License: check HumanML3D + underlying AMASS terms
+
+  [2] KIT-ML
+      - Smaller text–motion set; often used with HumanML3D
+      - Good extra captions
+
+  [3] Motion-X  (large, diverse — use if you can download)
+      - Whole-body, richer text, many categories
+      - Heavier prep; best for "general" coverage
+      - License: follow Motion-X authors' terms
+
+  [4] Other captioned motion sets (optional)
+      - BABEL (labels/segments on AMASS) — language via labels
+      - Any SMPL motion + auto-caption only if quality is filtered
+
+
+  ----------------------------------------------------------------------------
+  3.2 Motion body data without native text (optional expansion)
+  ----------------------------------------------------------------------------
+
+  AMASS / CMU / etc.:
+      - Huge motion only
+      - To use for LMM you NEED text: BABEL labels, retrieval captions,
+        or synthetic captions (noisy — filter carefully)
+      - V1 general LMM: prioritize HumanML3D (+ KIT) first; add Motion-X next
+
+
+  ----------------------------------------------------------------------------
+  3.3 Our Mixamo clips (SECONDARY only)
+  ----------------------------------------------------------------------------
+
+  Optional small finetune AFTER general train so style sits closer to avatar:
+      - Export our SMPL-X Actions + captions
+      - Low LR finetune  few epochs
+  NOT the main train set. Main train = large public datasets.
+
+
+  ----------------------------------------------------------------------------
+  3.4 Data root layout (suggested)
+  ----------------------------------------------------------------------------
+
+    body_motion/lmm/
+      data/
+        raw/
+          HumanML3D/
+          KIT-ML/
+          MotionX/          # if used
+          AMASS/            # if used
+        processed/
+          humanml3d/
+          kit/
+          motionx/
+          unified/          # common tensor format for training
+        manifests/
+          train.jsonl
+          val.jsonl
+          test.jsonl
+
+
+  ----------------------------------------------------------------------------
+  3.5 DATASET CHOICE FOR COLAB / KAGGLE (practical)
+  ----------------------------------------------------------------------------
+
+  Limits to respect:
+      Colab free:   ~15GB GPU RAM common, session time limits, ~100GB disk-ish
+      Colab Pro:    better GPU (often 16–40GB), still time-limited
+      Kaggle:       ~P100/T4 16GB class, ~20GB disk on instance, weekly GPU quota
+      Rule: start SMALL data + SMALL model; scale only if sessions survive
+
+  TIER A — START HERE (fits Colab/Kaggle for real training)
+  ---------------------------------------------------------
+  Primary:
+      HumanML3D
+        ~14.6k motions, ~45k text descriptions, ~28.6 hours
+        Built from AMASS; standard for MDM / MLD / T2M papers
+        Repo: https://github.com/EricGuo5513/HumanML3D
+        Needs: AMASS access (register) + HumanML3D processing scripts
+
+  Secondary (add when A trains cleanly):
+      KIT Motion-Language (KIT-ML)
+        ~3.9k motions, text descriptions, small extra diversity
+        Easy companion to HumanML3D in most T2M codebases
+
+  Why A for Colab/Kaggle:
+      - Processed size usually manageable (tens of GB, not 100s)
+      - Every major open T2M code supports it
+      - Enough for “many everyday actions from text”
+      - Train small/base MDM or MLD in multi-session Colab/Kaggle
+
+  Pipeline fit:
+      Output SMPL-family poses → later map to SMPL-X_Armature
+      Text captions → Text→LMM controller free-text path
+
+
+  TIER B — SCALE (harder on free Colab/Kaggle; better Pro + Drive)
+  --------------------------------------------------------------
+      Motion-X
+        ~81k sequences, ~144 hours, SMPL-X whole-body, text labels
+        Much more “general” coverage than HumanML3D alone
+        Heavy download + storage; multi-session or local/cloud disk
+        Paper/code: Motion-X (NeurIPS 2023)
+
+  Use B when:
+      - Tier A model works and you need more diversity
+      - You have Colab Pro + Google Drive or a VM with >200GB
+
+  Do NOT start training only on Motion-X on free Kaggle disk.
+
+
+  TIER C — OPTIONAL LABELS / EXTRAS (not full LMM alone)
+  ------------------------------------------------------
+      BABEL
+        Language labels / segments on AMASS motions
+        Good for action tags; not a full free-caption set by itself
+
+      AMASS (raw)
+        Huge mocap, little native free text
+        Required as SOURCE for building HumanML3D (via official scripts)
+        Do not train pure AMASS without text for LMM
+
+
+  TIER D — OUR AVATAR (after general model)
+  ----------------------------------------
+      Mixamo → SMPL-X retargeted Actions + short captions
+      Tiny finetune only (style), not main general training
+
+
+  RECOMMENDED COLAB / KAGGLE PLAN
+  -------------------------------
+  Week 1–2:
+      1) Register AMASS, build HumanML3D (follow EricGuo5513/HumanML3D)
+      2) Optional KIT-ML
+      3) Clone MDM or MLD (or MoMask), pin commit
+      4) Train small model, save checkpoints to Drive/Kaggle Dataset
+      5) Sample free-text prompts offline
+
+  Later:
+      6) Motion-X if storage/GPU allow
+      7) Bridge poses → Blender SMPL-X_Armature
+      8) Optional finetune on our clips
+
+  Storage tips:
+      - Keep raw AMASS on Drive; process to npy on the fly or once
+      - Upload processed HumanML3D as a private Kaggle Dataset
+      - Checkpoint every N steps to Drive (sessions die)
+
+  GPU tips:
+      - batch size for 16GB: start small, gradient accum
+      - prefer MLD latent (faster) or small MDM transformer
+      - mixed precision fp16
+      - multi-session resume from checkpoint
+
+  License:
+      - Always accept AMASS / dataset licenses before download
+      - Do not redistribute raw AMASS in public repos
+
+
+  QUICK PICK TABLE
+  ----------------
+  | Dataset    | Text?     | Scale   | Colab/Kaggle | Role in pipeline        |
+  |------------|-----------|---------|--------------|-------------------------|
+  | HumanML3D  | Free text | Medium  | YES start    | Main general LMM train  |
+  | KIT-ML     | Free text | Small   | YES add-on   | Extra captions/motion   |
+  | Motion-X   | Labels    | Large   | Pro/hard     | Scale general coverage  |
+  | BABEL      | Tags      | Med     | optional     | Action labels           |
+  | AMASS      | No        | Huge    | source only  | Build HumanML3D         |
+  | Our clips  | Yes short | Tiny    | always       | Style finetune only     |
+
+
+================================================================================
+4. MODEL ARCHITECTURE (GENERAL TEXT-TO-MOTION LMM)
+================================================================================
+
+  Goal: architecture that is STANDARD for general T2M and proven on large data.
+
+  ----------------------------------------------------------------------------
+  4.1 Recommended family (pick ONE codebase and stick to it)
+  ----------------------------------------------------------------------------
+
+  Option A — Motion Diffusion Model (MDM-style)  *** good default ***
+      Paper lineage: MDM (text-to-motion diffusion)
+      Condition: CLIP text embedding (frozen CLIP)
+      Denoiser: transformer on motion sequence
+      Output: motion features per frame (joint rots / positions per repo)
+
+  Option B — MLD (Motion Latent Diffusion)
+      Diffuse in latent space — often faster sampling
+      Needs VAE stage + diffusion stage
+
+  Option C — Generative transformer / masked modeling (e.g. MoMask-style)
+      Discrete motion tokens + text condition
+      Strong quality in recent open implementations
+
+  Project name for our checkpoint:  ProjFace-General-LMM
+  Implementation: fork ONE open repo (pin git commit), do not invent from zero.
+
+
+  ----------------------------------------------------------------------------
+  4.2 Conditioning (TEXT INTEGRATION — core of LMM)
+  ----------------------------------------------------------------------------
+
+      Text string
+          → tokenizer
+          → Frozen text encoder (CLIP ViT-B/32 or ViT-L/14)
+          → projected condition vector / sequence c
+
+      Training:
+          - random caption if multiple per motion
+          - classifier-free guidance: drop text with p≈0.1
+          - at sample time: CFG scale 2.5–7.5 typical
+
+      Optional extra conditions (if dataset has them):
+          - action category embedding
+          - duration / length token
+      Free text remains primary for "general."
+
+
+  ----------------------------------------------------------------------------
+  4.3 Motion representation (follow the repo you clone)
+  ----------------------------------------------------------------------------
+
+  Typical HumanML3D-style feature (example — match your code exactly):
+      - root velocity / height / rotation features
+      - joint positions / velocities / rotations in a fixed dim D_pose
+      - length T variable; pad/crop in collate
+
+  OR raw SMPL:
+      - global_orient (3)
+      - body_pose (63) for 21 joints × 3
+      - transl (3)
+      - optional hands if SMPL-X/H
+
+  CRITICAL:
+      Train and infer with THE SAME representation as the chosen codebase.
+      Conversion to Blender bones is a SEPARATE export adapter (Section 7).
+
+
+  ----------------------------------------------------------------------------
+  4.4 Network sketch (MDM-style default)
+  ----------------------------------------------------------------------------
+
+      z_t = noisy motion (B, T, D_pose)
+      t   = diffusion timestep
+      c   = CLIP(text)
+
+      ê = TransformerDenoiser(z_t, t, c)
+      train: noise prediction loss  ||ê - ε||²
+      sample: DDIM/DDPM steps → clean motion z_0
+      decode z_0 → joint rotations / positions (repo-specific)
+
+
+  ----------------------------------------------------------------------------
+  4.5 Scale (honest)
+  ----------------------------------------------------------------------------
+
+      HumanML3D-only baseline: 1× 16–24GB GPU possible for smaller models
+      Motion-X full + large transformer: multi-GPU / 40GB+ preferred
+      Train time: days to weeks depending on model and data
+
+      Start: HumanML3D (+KIT) MDM-small/base → verify text control
+      Scale: add Motion-X / more data → larger model
+
+
+================================================================================
+5. TRAINING RECIPE (LARGE DATA)
+================================================================================
+
+  5.1 Environment
+  ---------------
+      Separate conda/venv from Blender and face
+      PyTorch + CUDA matching GPU
+      Clone chosen T2M repo into:
+          body_motion/lmm/third_party/<repo_name>
+      Install THAT repo’s requirements
+
+
+  5.2 Prepare datasets
+  --------------------
+      Follow official HumanML3D / KIT / Motion-X prep scripts from the repo
+      Do not invent incompatible npy layouts
+      Produce train/val/test splits
+      Verify: random caption + motion load OK
+
+
+  5.3 Train command (conceptual — use repo CLI)
+  ---------------------------------------------
+      python train.py \
+        --dataset humanml3d \
+        --text_encoder clip \
+        --batch_size ... \
+        --lr ... \
+        --steps / epochs ... \
+        --save_dir body_motion/lmm/models/checkpoints/general_v1
+
+      Enable:
+        - classifier-free guidance training (text dropout)
+        - EMA weights if repo supports
+        - periodic sample visualization (text → video/gif of skeleton)
+
+
+  5.4 Evaluation (general T2M metrics)
+  ------------------------------------
+      During / after train (as supported by repo):
+        - R-precision / matching score (text–motion retrieval)
+        - FID on motion features
+        - Diversity / multimodality
+        - Human visual check: held-out prompts
+
+      Quality bar before integration:
+        - Diverse prompts produce plausible different motions
+        - Not mode-collapsed to one walk
+        - Feet/ground mostly acceptable (perfect physics not required V1)
+
+
+  5.5 Export inference package
+  ----------------------------
+      body_motion/lmm/models/export/general_v1/
+        weights (ema)
+        config.yaml          # dims, fps, mean/std if normalized
+        text_encoder note    # CLIP version
+        joint/feature spec   # how to decode to SMPL or joints
+        README_INFER.md
+
+
+  5.6 Optional domain finetune (after general works)
+  -------------------------------------------------
+      Low LR, few epochs on:
+        - our retargeted Mixamo→SMPL-X clips + captions
+      Purpose: avatar style / scale familiarity
+      Keep a pure general checkpoint too (ablate)
+
+
+================================================================================
+6. TEXT → LMM CONTROLLER (RUNTIME, OUR PIPELINE)
+================================================================================
+
+  Module (implement when model exists):
+      face_agents/text_to_lmm_controller.py
+      or body_motion/lmm/infer/text_to_lmm_controller.py
+
+  Role: turn PRODUCT inputs into an LMM inference request.
+  This is NOT the neural net; it is the text integration layer.
+
+
+  6.1 Inputs
+  ----------
+      spoken_line / user_text     free language (primary for general LMM)
+      intent / actions[]          optional director menu (maps to better prompts)
+      emotion, intensity, seed
+      duration_s or num_frames
+      style hints                 optional ("gentle", "fast")
+
+
+  6.2 Prompt building (general)
+  -----------------------------
+      If free text present and engine=lmm:
+          prompt = clean(user_text or caption)
+          optional: "A person " + prompt if dataset trained that way
+          optional: append emotion ("happily", "sadly") if it helps
+
+      If only director intent (no free text):
+          prompt = template_from_intent(intent)
+          e.g. wave → "a person waves with one hand"
+          (templates are fallback; general power is free text)
+
+      Always:
+          frames = clamp(duration_s * fps, min_t, max_t)
+          seed, cfg_scale, intensity → sampling params
+
+
+  6.3 LmmRequest schema
+  ---------------------
+      {
+        "prompt": "a person jumps and then waves",
+        "frames": 90,
+        "fps": 30,
+        "seed": 42,
+        "cfg_scale": 5.0,
+        "intensity": 0.8,
+        "intent": "custom" | catalog_id | null
+      }
+
+
+  6.4 MotionController routing
+  ----------------------------
+      USE_LMM=1 and (free_text_body or force_lmm or no clip match):
+          engine = "lmm"
+          req = text_to_lmm_controller.build(...)
+          buf = LmmEngine.generate(req)
+          apply to Blender
+      else:
+          engine = "clip_catalog"
+          play Action
+
+      Fallback:
+          if LMM fails → clip idle / talk_open
+
+
+================================================================================
+7. INTEGRATION INTO projface_v1 (AFTER GENERAL TRAIN)
+================================================================================
+
+  7.1 Runtime graph
+  -----------------
+
+      Director / chat text
+            |
+            v
+      MotionController + Text→LMM controller
+            |
+            +-- clip_catalog --> existing Actions (idle/walk/known)
+            |
+            +-- lmm --> LmmEngine (large general model)
+                          |
+                          v
+                   decode motion features
+                          |
+                          v
+                   SMPL / joints → OUR bone quats
+                          |
+                          v
+                   SMPL-X_Armature (bake Action or stream)
+                          |
+      Face agents (parallel) → shape keys only
+
+
+  7.2 Joint / pose bridge (required glue)
+  ---------------------------------------
+      Model space (SMPL / HumanML3D joints)
+          → converter
+          → Blender pose.bones[name].rotation_quaternion
+
+      Use:
+        body_motion/FINAL_BONE_MAP.json target names where possible
+        body_motion/lmm/infer/smpl_to_smplx_armature.py  (to implement)
+
+      Rules:
+        - resample to 30 FPS
+        - do not drive jaw / face shape keys
+        - root: apply carefully (gestures may zero XY if avatar should plant)
+        - scale height to match character if needed
+
+
+  7.3 Blender apply
+  -----------------
+      V1: bake temporary Action lmm_<hash> on SMPL-X_Armature
+           → blender_receiver can play like any Action
+      V2: stream per-frame pose packets type=body_pose
+
+
+  7.4 Face
+  --------
+      Unchanged. LMM never writes mouth*/jawOpen.
+
+
+================================================================================
+8. FOLDER STRUCTURE
+================================================================================
+
+  body_motion/lmm/
+    train_lmm.txt                 # this file (or keep at body_motion/)
+    third_party/                  # cloned T2M / MDM / MLD / MoMask repo
+    data/
+      raw/                        # HumanML3D, KIT, Motion-X, ...
+      processed/
+      manifests/
+    models/
+      checkpoints/
+      export/general_v1/
+    train/                        # thin wrappers calling third_party
+    infer/
+      engine.py                   # load export, generate(prompt)
+      text_to_lmm_controller.py
+      smpl_to_smplx_armature.py
+      bake_to_action.py
+
+
+================================================================================
+9. PHASE PLAN
+================================================================================
+
+  Phase A (product now — clips + policy)
+      Text/intent → catalog Actions
+      Independent of LMM train
+
+  Phase LMM-G1 — General train
+      HumanML3D (+KIT) + chosen architecture
+      Text conditioning + CFG
+      Offline skeleton samples OK
+
+  Phase LMM-G2 — Scale data
+      Motion-X / more data, larger model
+      Better metrics + visual diversity
+
+  Phase LMM-I — Integrate
+      LmmEngine + Text→LMM controller + bone bridge + Blender bake
+      USE_LMM flag, fallback to clips
+
+  Phase LMM-F — Optional finetune on our avatar clips (style only)
+
+
+================================================================================
+10. QUALITY GATES (GENERAL LMM)
+================================================================================
+
+  Before calling it trained:
+    [ ] Held-out free-text prompts produce distinct plausible motions
+    [ ] Metrics in expected ballpark for the repo/dataset
+    [ ] Not collapsed to single walk cycle
+    [ ] Export package loads on clean env
+
+  Before calling it integrated:
+    [ ] Prompt → Blender SMPL-X_Armature moves
+    [ ] No mouth driven by LMM
+    [ ] Clip fallback works with USE_LMM=0
+    [ ] Latency acceptable for offline bake (live can be async)
+
+
+================================================================================
+11. DO / DON’T
+================================================================================
+
+  DO
+    - Train on LARGE captioned motion datasets (HumanML3D, KIT, Motion-X, …)
+    - Use a standard text-to-motion architecture (MDM / MLD / MoMask-class)
+    - Frozen CLIP (or repo default) + classifier-free guidance
+    - Keep a separate clip engine for reliable product motions
+    - Bridge general poses → our armature after train
+
+  DON’T
+    - Train the general LMM only on ~23 Mixamo clips and call it general
+    - Expect Phase A clips alone to teach "all motions"
+    - Drive face/mouth with LMM
+    - Output unstructured Euler text from a chat LLM as the motion model
+
+
+================================================================================
+12. QUICK REFERENCE
+================================================================================
+
+  Data:     HumanML3D + KIT (+ Motion-X when ready)  >>  our clips
+  Model:    General text-to-motion LMM (diffusion or token transformer)
+  Text:     CLIP-conditioned free language + CFG
+  Runtime:  Text→LMM controller → LmmEngine → bone bridge → Blender
+  Product:  engine lmm (general) | engine clip (catalog)
+  Face:     separate
+
+================================================================================
+END
+================================================================================

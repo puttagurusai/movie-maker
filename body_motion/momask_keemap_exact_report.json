@@ -1,0 +1,65 @@
+{
+  "ok": true,
+  "method": "MoMask README KeeMap exact (no custom fixes)",
+  "readme": "https://github.com/EricGuo5513/momask-codes#retargeting",
+  "bvh": "C:\\me\\proj\\projface_v1\\third_party\\momask-codes\\generation\\orch_momask_a849a50b31fb\\animations\\0\\sample0_repeat0_len40_ik.bvh",
+  "mixamo": "C:\\me\\proj\\projface_v1\\body_motion\\source_fbx\\Idle.fbx",
+  "map": "C:\\me\\proj\\projface_v1\\third_party\\momask-codes\\assets\\mapping.json",
+  "source_rig": "sample0_repeat0_len40_ik",
+  "destination_rig": "Armature",
+  "frames": [
+    1,
+    40
+  ],
+  "samples": 40,
+  "valid_pairs": 18,
+  "travel": 1.796,
+  "arm_delta": 0.8675,
+  "checks": [
+    {
+      "frame": 1,
+      "legs_down": true,
+      "hand_drop": 0.168,
+      "hips": [
+        -0.0,
+        0.0,
+        1.193
+      ],
+      "LeftArm_q": [
+        0.858,
+        0.373,
+        0.352,
+        -0.012
+      ],
+      "LeftArm_euler": [
+        -0.34,
+        0.99,
+        -1.209
+      ]
+    },
+    {
+      "frame": 31,
+      "legs_down": true,
+      "hand_drop": -0.39,
+      "hips": [
+        -0.049,
+        -1.629,
+        0.966
+      ],
+      "LeftArm_q": [
+        0.858,
+        0.373,
+        0.352,
+        -0.012
+      ],
+      "LeftArm_euler": [
+        0.013,
+        1.073,
+        -0.189
+      ]
+    }
+  ],
+  "blend": "C:\\me\\proj\\projface_v1\\body_motion\\momask_cache\\momask_a849a50b31fb_mixamo.blend",
+  "fbx": "C:\\me\\proj\\projface_v1\\body_motion\\source_fbx\\momask_keemap_exact.fbx",
+  "how_to_view": "Open blend, select Mixamo Armature, play timeline"
+}

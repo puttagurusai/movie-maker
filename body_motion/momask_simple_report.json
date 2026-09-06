@@ -1,0 +1,80 @@
+{
+  "ok": true,
+  "steps": [
+    {
+      "step": 1,
+      "ok": true
+    },
+    {
+      "step": 2,
+      "mixamo_fbx": "walk.fbx"
+    },
+    {
+      "step": 3,
+      "ok": true,
+      "arm_delta": 0.3185,
+      "checks": [
+        {
+          "frame": 1,
+          "ab_x": 0.074,
+          "drop_z": -0.473,
+          "sh_q": [
+            0.824,
+            -0.131,
+            0.55,
+            -0.036
+          ],
+          "ok": false
+        },
+        {
+          "frame": 31,
+          "ab_x": 0.251,
+          "drop_z": 0.326,
+          "sh_q": [
+            0.89,
+            -0.058,
+            0.439,
+            -0.104
+          ],
+          "ok": true
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "ok": true,
+      "shoulder_delta": 0.3185,
+      "legs_down": true,
+      "checks": [
+        {
+          "frame": 1,
+          "ab_x": 0.068,
+          "drop_z": -0.442,
+          "sh_q": [
+            0.824,
+            0.55,
+            0.036,
+            0.131
+          ],
+          "ok": false
+        },
+        {
+          "frame": 31,
+          "ab_x": 0.2,
+          "drop_z": 0.362,
+          "sh_q": [
+            0.89,
+            0.439,
+            0.104,
+            0.058
+          ],
+          "ok": true
+        }
+      ]
+    }
+  ],
+  "open": {
+    "blend": "C:\\me\\proj\\projface_v1\\body_motion\\_momask_via_mixamo.blend",
+    "action": "momask_via_mixamo"
+  }
+}

@@ -1,0 +1,508 @@
+================================================================================
+  GEMINI IMPLEMENTATION GUIDE
+  Text-Conditioned LEARNED MOTION MATCHING (Holden 2020) only
+  Project: projface_v1
+================================================================================
+
+  READ THIS ENTIRE FILE BEFORE WRITING CODE.
+  Do NOT invent T2M / MDM / diffusion / GPT motion models.
+  Do NOT train face / mouth / blendshapes.
+  Do ONLY the steps and modules listed in §TARGET DELIVERABLES.
+
+  Dataset (already downloaded by user — do not re-download unless missing):
+    Kaggle: https://www.kaggle.com/datasets/mrriandmstique/humanml3d
+    Local path: set DATA_ROOT to where this dataset is extracted
+    (e.g. /kaggle/input/humanml3d  OR  user path under projface)
+
+  Pipeline docs (read if available in repo):
+    body_motion/LMM(learned motion model).txt
+    body_motion/LMM_IO_FORMAT.txt
+
+
+================================================================================
+0. HARD CONSTRAINTS (MUST FOLLOW)
+================================================================================
+
+  ALLOWED
+    - Learned Motion Matching: Decompressor, Stepper, Projector (MLPs + ELU)
+    - Text: DistilBERT frozen + TextProj (768→64) + Text2Traj
+    - Data: HumanML3D from Kaggle (new_joint_vecs, new_joints, texts, Mean/Std)
+    - Export: motion sequence for projface LMM_RESPONSE
+
+  FORBIDDEN
+    - Motion Diffusion (MDM), MLD, T2M-GPT, MoMask, any generative diffusion
+    - Training DistilBERT weights (freeze only)
+    - Raw 768-d text vector into Projector without TextProj
+    - Face / jaw / ARKit / shape keys
+    - Requiring joystick hardware (text is the control)
+    - Changing FPS to 30 during training (train native; resample only at export)
+
+
+================================================================================
+1. DATASET — KAGGLE HUMANML3D (VERIFY FIRST)
+================================================================================
+
+  1.1 Expected layout after extract
+  --------------------------------
+  DATA_ROOT/ may nest one extra folder. Auto-detect the directory that contains
+  BOTH new_joint_vecs/ AND texts/ (or train.txt).
+
+  Required (names may be exact as official HumanML3D):
+
+    DATA_ROOT/
+      new_joint_vecs/     # *.npy  feature vectors (T, D)  D often 263
+      new_joints/         # *.npy  positions (T, 22, 3)
+      texts/              # *.txt  captions
+      Mean.npy            # mean for new_joint_vecs
+      Std.npy             # std  for new_joint_vecs
+      train.txt
+      val.txt             # if missing, derive from train_val or split
+      test.txt
+      train_val.txt       # optional
+      all.txt             # optional
+      animations/         # optional — IGNORE for training
+
+  Files are .npy NOT .npz.
+
+  1.2 ID pairing
+  --------------
+    id from train.txt line, e.g. 000000 or M000000
+    new_joint_vecs/{id}.npy
+    new_joints/{id}.npy
+    texts/{id}.txt
+
+  1.3 STEP 1 — verify_data.py (what the script must do)
+  -----------------------------------------------------
+  Script: scripts/verify_data.py --data_root $DATA_ROOT
+
+  Print report → write dims.json / update config.yaml → exit 0 (PASS) or 1 (FAIL).
+
+  Must cover:
+    A) DATA_ROOT resolved (folder containing new_joint_vecs/ + texts/ or train.txt)
+    B) Counts: n_vecs, n_joints, n_texts
+    C) Shapes: one vec (T,D), one joints (T,22,3), Mean/Std length D
+    D) train.txt first ids + how many train ids fully pair (vec+joints+text)
+    E) One id pairing True/True/True + sample caption
+    F) LOCK and print: feature_dim, pose_dim, n_joints, fps_native, fps_export
+    G) Print x/y definitions (see locked block below)
+
+  PASS if: folders exist, D matches Mean/Std, joints (T,22,3), at least one full pair.
+  If folders missing: search subdirs; fail with clear error.
+
+
+  1.4 STEP 1 — VERIFIED OUTPUT (user run — STATUS: PASS)
+  -------------------------------------------------------
+  Checked once against real Kaggle HumanML3D extract. Shapes are authoritative.
+  Paths may differ; numbers/shapes below are the ground truth for this project.
+
+  Resolved DATA_ROOT:
+    example: /content/HumanML3D/data
+    (or local extract of kaggle.com/datasets/mrriandmstique/humanml3d)
+
+  File Counts:
+    new_joint_vecs (.npy): 17126
+    new_joints (.npy):     17126
+    texts (.txt):          29232
+    NOTE: more texts than motions is OK (mirrors/extras).
+    Train ONLY on ids that have vec + joints + text all present.
+
+  Tensor Shapes (sample):
+    new_joint_vecs: (167, 263)   → (T, D) with D=263
+    new_joints:     (167, 22, 3) → (T, 22, 3)
+    Mean.npy:       (263,)
+    Std.npy:        (263,)
+    CHECK: Mean/Std length == D == 263  ✓
+    CHECK: joints[1:] == (22, 3)        ✓
+    CHECK: vecs count == joints count   ✓
+
+  train.txt (example first lines):
+    000001, 000002, 000003
+
+  Pairing id 000001:
+    new_joint_vecs/000001.npy  True
+    new_joints/000001.npy      True
+    texts/000001.txt           True
+    caption example:
+      "a man squats extraordinarily low then bolts up in an unsatisfactory jump."
+
+  LOCKED DIMS (write to config.yaml / dims.json — DO NOT CHANGE):
+    feature_dim = 263     # x from new_joint_vecs
+    pose_dim    = 66      # y = 22 * 3 from new_joints
+    n_joints    = 22
+    fps_native  = 20      # HumanML3D default; train at this FPS
+    fps_export  = 30      # only when writing LMM_RESPONSE for pipeline
+
+  x / y definitions (step before network I/O):
+    x_t = (new_joint_vecs[t] - Mean) / (Std + 1e-8)   # shape (263,)
+    y_t = new_joints[t].reshape(66)                   # shape (66,)
+
+  STEP 1 RESULT: PASS
+    → Gemini may proceed to STEP 2 (dataset.py + geometry.py)
+    → All later modules MUST use feature_dim=263, pose_dim=66
+
+
+================================================================================
+2. TARGET ARCHITECTURE (IMPLEMENT EXACTLY)
+================================================================================
+
+  2.1 Modules
+  -----------
+
+  [A] DistilBERT
+      - transformers: DistilBertModel + DistilBertTokenizer
+      - model name: distilbert-base-uncased
+      - FROZEN (requires_grad=False for all params)
+      - Use [CLS] hidden state → (B, 768)
+
+  [B] TextProj
+      - Linear(768, 64) + LayerNorm(64)
+      - Output e ∈ R^{64}
+      - TRAINABLE
+
+  [C] Text2Traj
+      - MLP: 64 → 256 → ELU → traj_dim
+      - traj_dim: define from geometry (see §3); e.g. 10 horizons × 2 (xz) = 20
+      - TRAINABLE
+      - Predicts desired trajectory features from text
+
+  [D] DecompressorNet  (Holden)
+      - MLP: feature_dim → 512 → ELU → 512 → ELU → pose_dim
+      - x → y
+
+  [E] StepperNet  (Holden)
+      - MLP: (feature_dim + control_dim) → 512 → ELU → 512 → ELU → feature_dim
+      - (x, c) → x_next
+
+  [F] ProjectorNet  (Holden)
+      - MLP: query_dim → 512 → ELU → 512 → ELU → feature_dim
+      - Dropout 0.3 on hidden layers recommended
+      - q → x_star
+
+  2.2 Tensor definitions (MUST implement)
+  ---------------------------------------
+
+    # After STEP 1 lock (this Kaggle set): D=263, pose_dim=66
+    vec   = load new_joint_vecs[id]           # (T, 263)
+    mean, std = Mean.npy, Std.npy             # (263,)
+    x_t   = (vec[t] - mean) / (std + 1e-8)    # feature_dim = 263
+
+    joints = load new_joints[id]              # (T, 22, 3)
+    y_t   = joints[t].reshape(-1)             # pose_dim = 66  REQUIRED
+
+    Do NOT use y_t = x_t unless joints file missing (should not happen after STEP1 PASS)
+
+    From joints, compute for each t:
+      state_t  = geometric state features (root xz vel, facing, feet)  # state_dim
+      traj_t   = future root xz offsets at fixed horizons in root frame # traj_dim
+
+    e     = TextProj(DistilBERT(caption))     # (64,)
+    c_t   = concat(traj_t, e)                 # control_dim = traj_dim + 64
+    q_t   = concat(state_t, traj_t, e)        # query_dim = state_dim + traj_dim + 64
+
+  2.3 Supervision for Projector x_star
+  ------------------------------------
+    V1 simple (allowed):
+      x_star = x_t   # GT frame feature when q built from GT traj at t
+
+    V1 better (preferred if time allows):
+      Build a bank of x features; for each t, NN search with geometric
+      distance on (state, traj) only; x_star = nearest frame feature
+      (classical MM label). Then train Projector(q_with_text) → x_star
+
+  2.4 Stepper target
+  ------------------
+    x_next = x_{t+1} of same clip (skip last frame of each clip)
+
+
+================================================================================
+3. GEOMETRY FEATURES (FROM new_joints) — IMPLEMENT
+================================================================================
+
+  Skeleton: 22 joints HumanML3D / SMPL-like.
+  Use joint index 0 as root/pelvis unless standard HumanML3D layout says otherwise.
+  Document joint indices in code comments.
+
+  For each frame t (clip length T):
+
+    root_pos[t] = joints[t, 0, :]  # (3,)
+
+    Root velocity xz:
+      if t < T-1: vel_xz = root_pos[t+1,[0,2]] - root_pos[t,[0,2]]
+      else: vel_xz = 0
+
+    Facing: from hip/shoulder or velocity direction; produce 2D unit vector
+      face_xz (2,)
+
+    Future trajectory (example horizons in frames at fps=20):
+      offsets in frames: [4, 8, 12, 16, 20]  # ~0.2s..1.0s
+      For each horizon h:
+        if t+h < T: delta = root_pos[t+h,[0,2]] - root_pos[t,[0,2]]
+        else: delta = last available or zeros
+        rotate delta into facing-local frame → (2,)
+      traj_t = concat all deltas  # traj_dim = 5*2 = 10  (or 10*2 if more horizons)
+
+    Feet (optional but recommended):
+      low joint indices for feet — use last joints if unknown; store height
+      contact ≈ height < threshold
+
+    state_t = concat(vel_xz, face_xz, foot_features...)
+
+  Keep state_dim and traj_dim FIXED in config.yaml.
+
+
+================================================================================
+4. TEXT HANDLING
+================================================================================
+
+  Parse texts/{id}.txt:
+    - Split lines; strip; drop empty
+    - Each non-empty line is one caption
+    - During training: random.choice(captions)
+    - If file has # comments or score suffixes like "#0.0":
+        take text before '#' if present (common HumanML3D format)
+
+  Cache (strongly recommended):
+    Map caption_string → DistilBERT CLS 768 vector
+    Save caches/text_emb_cache.pt
+    Training batches use cache + TextProj only (fast)
+
+
+================================================================================
+5. LOSSES (IMPLEMENT EXACTLY)
+================================================================================
+
+  L_decomp = MSE(Decompressor(x_t), y_t)
+
+  L_step   = MSE(Stepper(x_t, c_t), x_{t+1})
+
+  L_proj   = MSE(Projector(q_t), x_star)
+
+  L_traj   = MSE(Text2Traj(e), traj_t)   # supervise Text2Traj with GT traj
+
+  Optional:
+  L_recon  = MSE(Decompressor(Projector(q_t)), y_star)
+             where y_star is joints of matched frame (or y_t if x_star=x_t)
+
+  Stage training (MUST support stages via CLI flag):
+
+    Stage 1: only L_decomp
+    Stage 2: L_step + L_traj
+    Stage 3: L_proj (+ 0.1 * L_recon optional)
+
+  Optimizer: AdamW
+  Weight decay higher on Projector (e.g. 1e-2) than others (1e-4)
+  Projector dropout ON
+
+
+================================================================================
+6. TRAINING LOOP REQUIREMENTS
+================================================================================
+
+  - Use train.txt ids for train, val.txt for validation
+  - Batch: sample random (id, t) frames with t+1 valid
+  - Window optional: also allow sampling short windows for later rollout eval
+  - Log: losses each N steps; save checkpoint each epoch
+  - Device: CUDA if available
+  - mixed precision optional
+  - Seed control
+
+  Config file config.yaml must include:
+    data_root, fps_native, D_e=64, hidden=512
+    feature_dim, pose_dim, traj_dim, state_dim, control_dim, query_dim
+    batch_size, lr, stages, epochs per stage
+    distilbert_name, checkpoint_dir, export_dir
+
+
+================================================================================
+7. INFERENCE ROLLOUT (REQUIRED SCRIPT)
+================================================================================
+
+  Script: infer_rollout.py
+
+  Input CLI:
+    --prompt "a person walks forward"
+    --frames 60          # output frames AT 30 fps after resample
+    --seed 0
+    --ckpt_dir ...
+
+  Steps:
+    1) e = TextProj(DistilBERT(prompt))
+    2) traj = Text2Traj(e)
+    3) init state from rest (zeros or mean pose joints)
+    4) q0 = concat(state0, traj, e); x = Projector(q0)
+    5) For t in range(T_native):
+         y = Decompressor(x) → reshape (22,3)
+         append y
+         c = concat(traj, e)
+         x = Stepper(x, c)
+         every K frames: x = 0.5*x + 0.5*Projector(q_t)  # reproject optional
+    6) Resample joint sequence from fps_native → 30 fps
+    7) Save export .npz matching §8
+
+
+================================================================================
+8. EXPORT FORMAT FOR projface PIPELINE (ONLY THIS OUTPUT)
+================================================================================
+
+  File: export/lmm_out_<stamp>.npz
+
+  REQUIRED keys:
+
+    schema_version   = 1
+    ok               = True
+    joint_format     = "humanml3d_joints22"
+    fps              = 30
+    frames           = T30
+    joints           = float32 array shape (T30, 22, 3)
+    meta_prompt      = str
+    meta_seed        = int
+    meta_model_name  = "learned_mm_text_humanml3d_v1"
+    meta_text_encoder= "distilbert-base-uncased"
+    meta_D_e         = 64
+    meta_up_axis     = "y"
+    meta_units       = "m"
+    meta_n_joints    = 22
+
+  On failure save:
+    ok=False, error=str
+
+  Do NOT include jaw, face, blendshapes.
+
+  This is the ONLY product-facing artifact besides checkpoints.
+  Downstream (NOT Gemini's job unless asked): map joints22 → SMPL-X_Armature.
+
+
+================================================================================
+9. REPO / CODE LAYOUT TO CREATE
+================================================================================
+
+  body_motion/lmm_train/          # or /kaggle/working/lmm_train/
+    config.yaml
+    README.md                     # how to run stages
+    data/
+      dataset.py                 # HumanML3D Kaggle loader
+      geometry.py                # state/traj from new_joints
+      text_cache.py
+    models/
+      text_encoder.py            # DistilBERT frozen + TextProj + Text2Traj
+      lmm_nets.py                # Decompressor, Stepper, Projector
+    train/
+      train_stage1_decomp.py
+      train_stage2_step_traj.py
+      train_stage3_projector.py
+      OR single train.py --stage {1,2,3}
+    infer/
+      infer_rollout.py
+    export/                      # empty; outputs go here
+    checkpoints/
+    scripts/
+      verify_data.py             # §1.3 prints
+
+
+================================================================================
+10. IMPLEMENTATION ORDER (GEMINI MUST FOLLOW THIS ORDER)
+================================================================================
+
+  STEP 1 — verify_data.py  (see §1.3–1.4)
+    Print full report; LOCK feature_dim=263, pose_dim=66, fps_native=20.
+    Define x=(vec-Mean)/Std, y=joints.reshape(66).
+    Write dims into config.yaml or dims.json.
+    PASS/FAIL exit code. STOP on FAIL.
+    Reference shapes from §1.4 (Kaggle humanml3d verified run).
+
+  STEP 2 — dataset.py + geometry.py
+    Dataset yields: x_t, x_next, y_t, state_t, traj_t, caption (or e_768 cache)
+
+  STEP 3 — text_encoder.py
+    Frozen DistilBERT + TextProj + Text2Traj
+    Unit test: prompt → e shape (1,64)
+
+  STEP 4 — lmm_nets.py
+    Three Holden MLPs with dims from config
+
+  STEP 5 — train stage 1 Decompressor
+    Save best ckpt by val L_decomp
+
+  STEP 6 — train stage 2 Stepper + Text2Traj
+    Save ckpt
+
+  STEP 7 — train stage 3 Projector
+    Dropout + weight decay; save ckpt
+
+  STEP 8 — infer_rollout.py
+    Prompt → joints (T,22,3) @ 30fps → export npz §8
+
+  STEP 9 — short README with exact run commands for Kaggle and local
+
+
+================================================================================
+11. EXAMPLE RUN COMMANDS (PUT IN README)
+================================================================================
+
+  # Verify
+  python scripts/verify_data.py --data_root $DATA_ROOT
+
+  # Train
+  python train/train.py --config config.yaml --stage 1
+  python train/train.py --config config.yaml --stage 2
+  python train/train.py --config config.yaml --stage 3
+
+  # Infer export for pipeline
+  python infer/infer_rollout.py \
+    --prompt "a person walks forward" \
+    --frames 60 \
+    --seed 0 \
+    --ckpt_dir checkpoints/ \
+    --out export/lmm_out_walk.npz
+
+
+================================================================================
+12. ACCEPTANCE TESTS (CODE MUST PASS)
+================================================================================
+
+  [ ] verify_data PASS: D=263, joints (T,22,3), Mean/Std (263,), pairings OK
+  [ ] config has feature_dim=263, pose_dim=66, fps_native=20, fps_export=30
+  [ ] One batch train step stage1 runs without shape error
+  [ ] Decompressor output shape (B, 66)   # y = joints flat
+  [ ] Stepper output shape (B, 263)       # x = joint vecs
+  [ ] Projector output shape (B, 263)
+  [ ] TextProj output shape (B, 64)
+  [ ] infer writes npz with joints (T,22,3), fps=30, joint_format humanml3d_joints22
+  [ ] No diffusion/T2M imports in the project
+
+
+================================================================================
+13. OUT OF SCOPE (DO NOT IMPLEMENT)
+================================================================================
+
+  - Blender bpy integration
+  - SMPL-X_Armature baking (pipeline team)
+  - Face agents / visemes
+  - Motion-X / AMASS download
+  - Joystick UI
+  - Full classical KD-tree production system (simple NN or x_star=x_t is enough V1)
+
+
+================================================================================
+14. ONE-PAGE SUMMARY FOR GEMINI
+================================================================================
+
+  DATA:    Kaggle mrriandmstique/humanml3d
+           STEP1 locked: feature_dim=263, pose_dim=66, fps_native=20
+           new_joint_vecs + Mean/Std → x (263,)
+           new_joints → y (66,) + traj/state
+           texts → DistilBERT → TextProj(64)
+
+  MODEL:   TextProj, Text2Traj, Projector, Stepper, Decompressor
+
+  LOSS:    MSE decomp / step / proj / traj  (staged)
+
+  OUT:     npz joints (T,22,3) @ 30fps  joint_format=humanml3d_joints22
+
+  NOT:     T2M diffusion, face, raw 768 into LMM
+
+
+================================================================================
+END OF GEMINI GUIDE
+  Authoritative for code generation. Prefer this file over chat summaries.
+================================================================================

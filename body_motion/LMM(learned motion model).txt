@@ -1,0 +1,646 @@
+================================================================================
+  LEARNED MOTION MATCHING (Holden 2020) — TEXT-CONDITIONED
+  Training plan for projface_v1  |  Official HumanML3D layout (.npy + texts)
+================================================================================
+
+  SCOPE (locked)
+  --------------
+  - Train ONLY Learned Motion Matching (LMM) — NOT diffusion T2M
+  - User control at product time: TEXT (and optional intent)
+  - Data: official HumanML3D folders (see §1) — .npy NOT .npz
+  - Text encoder NOW: DistilBERT → embeddings (frozen backbone)
+  - Output for pipeline: LMM_RESPONSE (LMM_IO_FORMAT.txt) → SMPL-X_Armature
+  - Face / mouth: NEVER from this model
+
+  Official references:
+    Holden et al., "Learned Motion Matching", SIGGRAPH 2020
+    HumanML3D: https://github.com/EricGuo5513/HumanML3D
+
+
+================================================================================
+1. OFFICIAL HUMANML3D DATA LAYOUT (YOUR DATA)
+================================================================================
+
+  From the official HumanML3D repo (extract rars as needed):
+
+    <DATA-DIR>/
+      animations/          # optional mp4 previews (NOT used for training)
+      new_joint_vecs/      # *.npy  motion FEATURE vectors (per frame)
+      new_joints/          # *.npy  3D joint POSITIONS  (T, 22, 3) SMPL skeleton
+      texts/               # *.txt  captions for each motion id
+      Mean.npy             # mean of new_joint_vecs (all train stats)
+      Std.npy              # std  of new_joint_vecs
+      all.txt              # list of all motion ids
+      train.txt            # training ids
+      test.txt
+      val.txt
+      train_val.txt
+
+  Naming (official):
+    Motion  new_joints/000000.npy  ↔  text  texts/000000.txt
+    Mirrored: M000000.npy  ↔  same protocol
+    "XXXXXX" and "MXXXXXX" are pairs (mirror)
+
+  File type:  .npy  (NumPy arrays) — NOT .npz
+  Skeleton:   HumanML3D follows SMPL structure with 22 joints
+  FPS:        typically 20 in HumanML3D pipelines — VERIFY once
+  Pipeline:   resample to 30 fps only when packing LMM_RESPONSE
+
+
+  ----------------------------------------------------------------------------
+  1.1 What each folder is
+  ----------------------------------------------------------------------------
+
+  new_joint_vecs/*.npy
+    - "Extracted rotation-invariant + rotation feature vectors from 3D positions"
+    - Shape usually (T, D) with D ≈ 263 for HumanML3D (VERIFY your files)
+    - This is the STANDARD vector used by MDM/T2M code on HumanML3D
+    - Normalize: (v - Mean.npy) / Std.npy
+
+  new_joints/*.npy
+    - 3D joint positions over time
+    - Shape usually (T, 22, 3)
+    - Good for trajectory, feet, visualization, IK / pose recovery toward skeleton
+
+  texts/*.txt
+    - One or more English lines describing the motion
+    - Same basename as the npy id
+
+  Mean.npy / Std.npy
+    - Fit to new_joint_vecs — use for normalize / denormalize
+
+  train.txt / val.txt / test.txt
+    - Official splits — USE THESE (do not random-split naively)
+
+
+  ----------------------------------------------------------------------------
+  1.2 Gemini said "use new_joint_vecs" — what do WE recommend?
+  ----------------------------------------------------------------------------
+
+  Gemini is PARTLY right. Official vecs are the main motion representation.
+  For Learned Motion Matching + our Blender pipeline we recommend BOTH:
+
+    PRIMARY motion code / step / match space:
+      → new_joint_vecs  (normalized with Mean/Std)
+         Use as frame feature x_t  OR as pose target y_t in vector form
+         Best aligned with HumanML3D tooling
+
+    GEOMETRY for classical MM-style features + export toward skeleton:
+      → new_joints  (T, 22, 3)
+         Root trajectory, foot heights/contacts, desired path samples
+         Visual debug; help build q_geom / traj_t
+         Later: positions → rotations / SMPL-X_Armature adapter
+
+    TEXT:
+      → texts/ + DistilBERT → TextProj → e
+
+    DO NOT train on animations/*.mp4
+
+  Summary recommendation:
+
+    | Asset            | Role in LMM train                          |
+    |------------------|--------------------------------------------|
+    | new_joint_vecs   | Main x / y vector; Stepper/Decomp/Projector|
+    | Mean.npy Std.npy | Normalize vecs                             |
+    | new_joints       | Trajectory + feet + export bridge          |
+    | texts            | Captions → text embedding                  |
+    | train/val/test   | Splits                                     |
+    | animations       | Human preview only                         |
+
+  Why not ONLY new_joint_vecs?
+    - Matching quality needs geometric trajectory/feet (easier from new_joints)
+    - Our pipeline needs a path to SMPL-X_Armature (positions → joints/bones)
+    - Vec-only is fine for internal LMM; export still needs joints or recovery
+
+
+  ----------------------------------------------------------------------------
+  1.3 How one training sample is built
+  ----------------------------------------------------------------------------
+
+    id = line from train.txt  e.g. "000123" or "M000123"
+
+    vec   = np.load(f"{DATA}/new_joint_vecs/{id}.npy")   # (T, D)
+    joints= np.load(f"{DATA}/new_joints/{id}.npy")       # (T, 22, 3)
+    text  = open(f"{DATA}/texts/{id}.txt").read()        # multi-line captions
+    mean  = np.load(f"{DATA}/Mean.npy")
+    std   = np.load(f"{DATA}/Std.npy")
+    vec_n = (vec - mean) / (std + 1e-8)
+
+    caption = random.choice(non-empty lines of text)  # if multiple descriptions
+
+    Pair: (caption, vec_n, joints) for that id
+
+
+  ----------------------------------------------------------------------------
+  1.4 Pose target y and feature x  (updated for this data)
+  ----------------------------------------------------------------------------
+
+  RECOMMENDED V1 (simplest, uses official vecs):
+
+    x_t = vec_n[t]           # normalized new_joint_vecs row  (feature_dim = D)
+    y_t = vec_n[t]           # same: Decompressor learns near-identity OR
+                             # mild denoise — still useful with Stepper/Projector
+    OR y_t = joints[t] flat  # (66,) if you prefer positions as decode target
+
+  BETTER V1 for pipeline export:
+
+    x_t = vec_n[t]                    # compact match/step space (D≈263)
+    y_t = joints[t] reshape (22*3,)   # Decompressor: vec feature → joint positions
+    Then export joints → bone/SMPL adapter → LMM_RESPONSE
+
+  Classical matching extras from new_joints only:
+    traj_t, foot contacts, root vel  → part of q_geom / c geometry
+    e = TextProj(DistilBERT(caption)) → concat into q and c as before
+
+
+  ----------------------------------------------------------------------------
+  1.5 FPS and pipeline
+  ----------------------------------------------------------------------------
+
+    Train at HumanML3D native FPS (check; often 20).
+    Infer rollout length T_native.
+    Before LMM_RESPONSE: resample to fps=30.
+    joint_format for adapter: start from joint positions (22,3) path
+      or recover rotations; declare in meta.
+
+
+================================================================================
+2. HIGH-LEVEL IDEA (OFFICIAL LMM + TEXT)
+================================================================================
+
+  Official LMM (paper):
+    gamepad / trajectory → q_t, c_t → Projector / Stepper / Decompressor → pose
+
+  Our product:
+    text → embedding → (projected) → same three nets → pose sequence
+
+  Text does NOT replace the three nets.
+  Text is converted into the SAME roles as joystick signals:
+    - part of QUERY q_t   (what to match)
+    - part of CONTROL c_t (how to step)
+    - optional desired future trajectory predicted from text
+
+  Motions still come from the HumanML3D manifold (matching / stepping),
+  not free invention outside the data.
+
+
+================================================================================
+3. TEXT ENCODER — DistilBERT (and alternatives)
+================================================================================
+
+  CURRENT CHOICE: DistilBERT  — OK for V1
+
+    Pros: fast, small, easy on Colab/Kaggle, good caption encoding
+    Cons: not the default in many motion papers (CLIP is)
+
+    Use:
+      - Frozen DistilBertModel
+      - Take [CLS] hidden state → R^{768}
+      - Train ONLY a small projection head TextProj (see below)
+      - Do NOT feed raw 768 into Projector (too large, unstable)
+
+  OPTIONAL UPGRADE (if quality plateaus):
+      CLIP text encoder (ViT-B/32), still frozen + TextProj
+      Better if you later share embeddings with other motion work
+      Slightly heavier; not required to start
+
+  NOT recommended first:
+      Full BERT (slower, little gain over DistilBERT for this)
+
+
+  3.1 Text embedding pipeline (fixed)
+  ----------------------------------
+
+    prompt / caption
+        → DistilBERT tokenizer
+        → DistilBERT (frozen)
+        → h_cls ∈ R^{768}
+        → TextProj: Linear(768 → D_e) + LayerNorm + optional Tanh
+        → e ∈ R^{D_e}
+
+    Recommended D_e = 64  (32..128 ok; 64 default)
+
+    This is the “compress text embedding” step (Gemini idea) — KEEP IT.
+    Raw 768 into LMM MLPs is a bad idea.
+
+
+================================================================================
+4. MOTION SIDE — FEATURES AND POSE TARGET y
+================================================================================
+
+  4.1 Pose target y (Decompressor output) — from official .npy
+  ------------------------------------------------------------
+
+  Prefer (see §1.4):
+
+    y_t = new_joints[t].reshape(-1)     # (66,) for 22 joints × xyz
+    pose_dim = 66
+
+  Alternative (vec reconstruction):
+
+    y_t = new_joint_vecs[t] normalized  # (D,) e.g. 263
+    pose_dim = D
+
+  NO face / jaw / expression in y.
+
+  At export to our pipeline:
+    sequence of (T, 22, 3) joints → adapter → rotations on SMPL-X_Armature
+    OR vec → recover joints (HumanML3D recover scripts if available)
+    Then LMM_IO_FORMAT (fps=30). Prefer exporting joint positions first,
+    then bone mapping in projface adapter.
+
+
+  4.2 Compressed frame feature x  (latent for LMM)
+  ------------------------------------------------
+
+  Official role: compact code for a DB frame (Decompressor: x → y).
+
+  V1 with official HumanML3D (RECOMMENDED):
+
+    Option A — x = normalized new_joint_vecs[t]
+      feature_dim = D  (len of one vec row)
+      Matches Gemini use of new_joint_vecs; good for Stepper/Projector
+
+    Option B — x = handcrafted f_t from new_joints only
+      Smaller; pure classical MM style
+
+    Option C — learned Encoder(y)→x later
+
+  Default: Option A (new_joint_vecs + Mean/Std)
+
+
+  4.3 Geometric matching extras  (from new_joints only)
+  -------------------------------------------------------
+
+  Computed offline from new_joints/*.npy (classical MM geometry):
+
+    - Root velocity / facing (from pelvis/root joint trajectory)
+    - Future trajectory: positions at horizons 0.2s..1.0s (root-local xz)
+    - Foot positions / contact flags (toe/ankle joints)
+    - Optional: hip height / vertical velocity (jumps)
+
+  These build traj_t / state_geom for q and c (concat with text e).
+  Document layout in pose_layout.json when you implement.
+
+  These are the “joystick-like” geometric signals inside the data.
+
+
+  4.4 Control c_t and query q_t  (WITH TEXT)
+  ------------------------------------------
+
+  Official paper:
+    c_t = user control (desired direction/speed trajectory)
+    q_t = current state matching features + desired future trajectory
+
+  OUR text-conditioned definitions:
+
+    e = TextProj(DistilBERT(caption))     # R^{D_e}
+
+    At TRAIN time (teacher forcing from GT motion):
+      traj_t     = actual future trajectory features from the clip at t
+      state_t    = current local matching features (pose/root/feet subset of f_t)
+      c_t        = concat( traj_t , e )           # control includes text
+      q_t        = concat( state_t , traj_t , e ) # query includes text
+      x_t        = feature/code of current frame
+      x_{t+1}    = feature/code of next frame
+      x*_true    = from classical MM search using geometric features
+                   OR (simpler V1) x*_true = x_t  when query is built from GT
+                      (identity matching under GT traj — still learns text co-occurrence
+                       if e varies per clip; better: run true NN search on f without e
+                       and use e only in q so Projector learns text→match)
+
+  RECOMMENDED V1 labeling for Projector:
+    1) Build geometric query q_geom = (state_t, traj_desired)
+       where traj_desired at train = GT future traj
+    2) x*_true = nearest DB frame by classical MM distance on geometric features
+       (standard Holden supervision)
+    3) Train Projector on q_full = concat(q_geom, e) → x*_true
+       so text helps disambiguate when geometry is similar
+
+  At INFER time:
+    e = TextProj(DistilBERT(prompt))
+    traj_0 = Text2Traj(e)   # small MLP: e → initial desired trajectory features
+             OR zeros + intent heuristics if Text2Traj not ready
+    Roll out T frames (section 8)
+
+
+================================================================================
+5. ARCHITECTURE (FINAL FOR OUR TRAIN)
+================================================================================
+
+  Modules
+  -------
+
+  [1] DistilBERT          frozen
+  [2] TextProj            trained   768 → D_e (64)
+  [3] Text2Traj           trained   e → traj features  (same dim as traj_t)
+                          used at infer; at train can supervise vs GT traj
+  [4] DecompressorNet     trained   x → y          (official)
+  [5] StepperNet          trained   (x, c) → x_next (official)
+  [6] ProjectorNet        trained   q → x*         (official)
+
+  Optional later:
+  [7] PoseEncoder         y → x if using Option B latent
+
+
+  Diagram
+  -------
+
+    TEXT
+      DistilBERT (frozen) → h_768 → TextProj → e (D_e)
+                              │
+                              ├──────────────► Text2Traj → traj_des
+                              │
+    MOTION DB (HumanML3D .npy)
+      new_joint_vecs → x_t (norm)
+      new_joints     → traj/state_geom, y_t
+      texts          → caption → e
+                              v
+                    q = [ state_t | traj_des | e ]
+                    c = [ traj_des | e ]
+                              │
+              ┌───────────────┼───────────────┐
+              v               v               v
+         Projector         Stepper      Decompressor
+           q → x*        (x,c)→x_next      x → y
+              │               │               │
+              └──── rollout ──┴───────────────┘
+                              v
+                    sequence Y = {y_1..y_T}  SMPL
+                              v
+                    convert + resample 30fps
+                              v
+                    LMM_RESPONSE → projface pipeline
+
+
+  MLP style (Holden): Linear + ELU, hidden 512 (256 if low VRAM)
+
+    Decompressor:  feature_dim → 512 → 512 → pose_dim
+    Stepper:       feature_dim+control_dim → 512 → 512 → feature_dim
+    Projector:     query_dim → 512 → 512 → feature_dim
+    TextProj:      768 → D_e
+    Text2Traj:     D_e → traj_dim
+
+
+  Dimension bookkeeping (FILL FROM YOUR DATA — examples only)
+
+    D_e          = 64
+    traj_dim     = e.g. 2 * n_horizons * 2   # xz positions at n horizons (define yours)
+    state_dim    = |state_t|
+    feature_dim  = |x|                       # if x=f_t, = |f_t|
+    control_dim  = traj_dim + D_e
+    query_dim    = state_dim + traj_dim + D_e
+    pose_dim     = |y|
+
+
+================================================================================
+6. LOSS FUNCTIONS (OFFICIAL + TEXT HEADS)
+================================================================================
+
+  Train mostly as three independent regressions (Holden), plus text heads.
+
+
+  6.1 Decompressor  (official)
+  ----------------------------
+
+    L_decomp = || Decompressor(x_t) - y_t ||^2
+
+    Optional: velocity term on joints
+    L_decomp += λ_v * || Δ Decomp(x) - Δ y ||^2
+
+
+  6.2 Stepper  (official)
+  -----------------------
+
+    L_step = || Stepper(x_t, c_t) - x_{t+1} ||^2
+
+    c_t = concat(traj_t_GT, e)   at train
+
+
+  6.3 Projector  (official + text in q)
+  ------------------------------------
+
+    L_proj = || Projector(q_t) - x*_true ||^2
+
+    CRITICAL regularization (paper insight):
+      - Dropout on Projector (e.g. 0.2–0.5)
+      - Weight decay
+      - Optional noise on q_t
+      - Optional: project x* then L_recon = || Decomp(Projector(q)) - y* ||^2
+        (keeps Projector on Decompressor manifold)
+
+
+  6.4 Text2Traj  (our extension)
+  ------------------------------
+
+    L_traj = || Text2Traj(e) - traj_clip ||^2
+
+    traj_clip = mean or first-frame GT future trajectory of the sequence
+    (or per-frame traj_t; per-frame is richer)
+
+
+  6.5 TextProj
+  ------------
+
+    No separate loss if only used inside L_proj / L_step / L_traj
+    Trained end-to-end with those losses (DistilBERT frozen)
+
+
+  6.6 Total (staged training recommended)
+  ---------------------------------------
+
+    Stage 1: L_decomp  (+ optional autoencoder)
+    Stage 2: L_step + L_traj
+    Stage 3: L_proj (+ optional L_recon through Decomp)
+    Or joint with weights:
+
+    L = L_decomp + L_step + L_proj + λ_traj * L_traj + λ_rec * L_recon
+
+    Start: λ_traj=1, λ_rec=0.1, strong Projector WD/dropout
+
+
+================================================================================
+7. TRAINING STEPS (PROCEDURE)
+================================================================================
+
+  [0] Verify official layout:
+      new_joint_vecs/*.npy, new_joints/*.npy, texts/*.txt
+      Mean.npy, Std.npy, train.txt, val.txt, test.txt
+      print one vec shape, one joints shape (expect T,D and T,22,3)
+
+  [1] Build motion database tables (ids from train.txt)
+      For each id:
+        load vec, joints, captions
+        vec_n = (vec - Mean) / Std
+        per frame: x_t=vec_n[t], y_t=joints[t] flat or vec_n[t]
+        compute traj/state from new_joints
+        next-frame links x_{t+1}
+
+  [2] Classical MM offline labels (for Projector)
+      NN search on geometric features (from new_joints) and/or vec distance
+      Store (q_geom, e, x*_true, x_t, x_{t+1}, traj_t, y_t, text)
+
+  [3] Text cache (speed)
+      Precompute DistilBERT h_cls for each caption line → save .pt
+      Train only TextProj on top of cached 768-d vectors
+
+  [4] Stage train Decompressor until recon is good
+      (vis with new_joints skeleton if y is positions)
+
+  [5] Stage train Stepper + Text2Traj
+
+  [6] Stage train Projector (with e in q) + heavy reg
+
+  [7] Export package
+      textproj.pt, text2traj.pt
+      decompressor.pt, stepper.pt, projector.pt
+      copy Mean.npy Std.npy, pose_layout.json, dims.json
+      distilbert id (distilbert-base-uncased)
+
+  [8] Infer smoke: prompt → T frames → LMM_RESPONSE (.npz ok for export)
+      → Blender adapter later
+
+
+  Hardware: single 16GB GPU ok for MLPs + frozen DistilBERT encode offline.
+
+
+================================================================================
+8. INFERENCE ROLLOUT (TEXT IN → MOTION OUT)
+================================================================================
+
+  Input: LMM_REQUEST
+    {
+      "prompt": "a person walks forward",
+      "frames": 60,
+      "fps": 30,
+      "seed": 0,
+      "intent": "walk",      # optional
+      "intensity": 0.8       # optional scale
+    }
+
+  Algorithm:
+    1) e = TextProj(DistilBERT(prompt))
+    2) traj = Text2Traj(e)          # desired trajectory features
+    3) init state from idle/rest pose features (or last character state)
+    4) x = Projector(q0) with q0 = [state0, traj, e]
+       OR x = mean feature of DB  # fallback
+    5) for t in 1..T_native:
+         c_t = concat(traj, e)     # optionally update traj slowly
+         y_t = Decompressor(x)
+         append y_t
+         x = Stepper(x, c_t)
+         every K frames: x = lerp(x, Projector(q_t), alpha)  # re-project
+    6) Resample sequence to fps=30 if native != 30
+    7) Pack LMM_RESPONSE (section 9)
+    8) intensity: optional scale of joint deltas vs rest
+
+
+================================================================================
+9. OUTPUT FORMAT FOR OUR PIPELINE (TARGET)
+================================================================================
+
+  Must match body_motion/LMM_IO_FORMAT.txt
+
+  Preferred after convert:
+
+  {
+    "schema_version": 1,
+    "ok": true,
+    Preferred path from this dataset:
+
+    "joint_format": "humanml3d_joints22",   # (T, 22, 3) positions
+    "fps": 30,
+    "frames": T30,
+    "joints": float32 (T, 22, 3),          # from Decomp→joints or recovered
+    # optional also denser:
+    "motion_vec": float32 (T, D),          # denormalized new_joint_vecs space
+    "meta": {
+      "model_name": "learned_mm_text_humanml3d_v1",
+      "prompt": "...",
+      "seed": 0,
+      "text_encoder": "distilbert-base-uncased",
+      "D_e": 64,
+      "data": "HumanML3D new_joint_vecs + new_joints",
+      "up_axis": "y",
+      "units": "m",
+      "n_joints": 22
+    }
+  }
+
+  Adapter in projface_v1:
+    joints22 positions → estimate bone rotations / retarget
+    → SMPL-X_Armature → bake Action / play
+    Face untouched
+
+  Note: LMM_IO_FORMAT.txt also allows smpl_axis_angle; use joints22 first
+  if that is what Decompressor outputs, then extend adapter.
+
+  On failure: { "ok": false, "error": "..." } → clip fallback
+
+
+================================================================================
+10. PRODUCT PIPELINE HOOK
+================================================================================
+
+  Director / text
+      → LMM_REQUEST
+      → YOUR LMM infer (this document)
+      → LMM_RESPONSE
+      → MotionController engine="learned_mm"
+      → Blender SMPL-X_Armature
+      → face agents parallel
+
+  Phase A clips remain for wave/talk reliability until LMM quality is good.
+
+
+================================================================================
+11. WHAT CHANGED VS GEMINI “COMPRESS TEXT → LMM”
+================================================================================
+
+  KEEP:
+    - Compress 768 → D_e via TextProj (essential)
+
+  CHANGE / CLARIFY for best + official LMM:
+    - Do not dump text into a single black-box instead of 3 nets
+    - Text becomes part of q and c (official control slots)
+    - Add Text2Traj so text can drive trajectory like a virtual joystick
+    - Keep Decompressor / Stepper / Projector + MSE as paper core
+    - HumanML3D official .npy (new_joint_vecs + new_joints + texts)
+    - DistilBERT frozen; optional later CLIP
+    - Stage training + Projector regularization mandatory
+
+
+================================================================================
+12. SUCCESS CRITERIA
+================================================================================
+
+  [ ] Load train.txt ids: vec, joints, text aligned by basename
+  [ ] Decompressor reconstructs joints or vecs (visual skeleton OK)
+  [ ] Stepper continues walk without exploding
+  [ ] Prompt "walk" vs "sit" produces clearly different sequences
+  [ ] Export LMM_RESPONSE (joints22 @ 30fps) for pipeline adapter
+  [ ] No mouth/jaw channels
+
+
+================================================================================
+13. QUICK REFERENCE
+================================================================================
+
+  Data:     Official HumanML3D
+              new_joint_vecs/*.npy + Mean/Std
+              new_joints/*.npy (T,22,3)
+              texts/*.txt
+              train.txt / val.txt / test.txt
+  Encoder:  DistilBERT frozen → TextProj → e (64-d)
+  Arch:     TextProj + Text2Traj + Projector + Stepper + Decompressor
+  Loss:     L_decomp + L_step + L_proj (+ L_traj + optional L_recon)
+  Paper:    Holden Learned Motion Matching (3 MLP + MSE)
+  x_t:      normalized new_joint_vecs[t]   (Gemini: use this — YES as primary)
+  y_t:      new_joints[t] flat (recommended) or vec
+  geom:     trajectory/feet from new_joints
+  Out:      (T,22,3) @ 30fps → adapter → SMPL-X_Armature
+  Face:     excluded
+
+================================================================================
+END — train this only; no T2M diffusion in this file
+================================================================================

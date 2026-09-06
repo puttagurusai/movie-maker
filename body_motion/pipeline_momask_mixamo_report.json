@@ -1,0 +1,115 @@
+{
+  "ok": true,
+  "steps": [
+    {
+      "step": 1,
+      "pass": true,
+      "bvh": "C:\\me\\proj\\projface_v1\\lmm train\\momask_walk.bvh",
+      "bytes": 83223
+    },
+    {
+      "step": 2,
+      "pass": true,
+      "bvh_legs": {
+        "label": "bvh_source_f1",
+        "hip_z": 0.849,
+        "knee_z": 0.4788,
+        "ankle_z": 0.0863,
+        "legs_down": true,
+        "thigh_len": 0.3768,
+        "shin_len": 0.4006
+      },
+      "src": "momask_walk",
+      "dst": "Armature"
+    },
+    {
+      "step": 3,
+      "pass": true,
+      "valid_pairs": 22,
+      "missing": [],
+      "legs": {
+        "label": "mixamo_f1",
+        "hip_z": 0.8691,
+        "knee_z": 0.4333,
+        "ankle_z": -0.0031,
+        "legs_down": true,
+        "thigh_len": 0.4437,
+        "shin_len": 0.4453
+      },
+      "has_action": true
+    },
+    {
+      "step": 4,
+      "pass": true,
+      "legs": {
+        "label": "smplx_f1",
+        "hip_z": 0.8976,
+        "knee_z": 0.5007,
+        "ankle_z": 0.0794,
+        "legs_down": true,
+        "thigh_len": 0.4026,
+        "shin_len": 0.4257
+      },
+      "thigh_pose": 0.4026,
+      "thigh_rest": 0.4026,
+      "collar_quat": [
+        1.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "collar_angle_rad": 0.0,
+      "knee_moves": true,
+      "action": "momask_via_mixamo"
+    },
+    {
+      "step": 5,
+      "pass": true,
+      "samples": [
+        {
+          "label": "final_f1",
+          "hip_z": 0.8976,
+          "knee_z": 0.5007,
+          "ankle_z": 0.0794,
+          "legs_down": true,
+          "thigh_len": 0.4026,
+          "shin_len": 0.4257
+        },
+        {
+          "label": "final_f30",
+          "hip_z": 0.8439,
+          "knee_z": 0.4545,
+          "ankle_z": 0.0524,
+          "legs_down": true,
+          "thigh_len": 0.4026,
+          "shin_len": 0.4257
+        },
+        {
+          "label": "final_f60",
+          "hip_z": 1.0582,
+          "knee_z": 0.7047,
+          "ankle_z": 0.3942,
+          "legs_down": true,
+          "thigh_len": 0.4026,
+          "shin_len": 0.4257
+        }
+      ],
+      "left_collar_q": [
+        1.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "spine2_q": [
+        1.0,
+        -0.0,
+        0.0,
+        0.0
+      ],
+      "collar_near_stable": true
+    }
+  ],
+  "out": "C:\\me\\proj\\projface_v1\\body_motion\\_momask_via_mixamo.blend",
+  "export_fbx": "C:\\me\\proj\\projface_v1\\body_motion\\source_fbx\\momask_via_keemap.fbx",
+  "action": "momask_via_mixamo"
+}

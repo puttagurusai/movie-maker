@@ -1,0 +1,71 @@
+{
+  "bvh": "C:\\me\\proj\\projface_v1\\body_motion\\momask_cache\\official_t2m_scale\\momask_official_1786113934_official_ik.bvh",
+  "action": "momask_official_1786113934",
+  "scale": 1.12232,
+  "smplx_frames": [
+    1,
+    80
+  ],
+  "bvh_frames": [
+    1,
+    119
+  ],
+  "samples": 16,
+  "compare_bvh_vs_retarget": {
+    "label": "official_bvh_scaled_vs_smplx_retarget",
+    "L": {
+      "n": 16,
+      "upper_arm_angle_mean_deg": 19.14,
+      "upper_arm_angle_max_deg": 43.97,
+      "full_arm_angle_mean_deg": 26.95,
+      "elbow_y_delta_mean": 0.0143,
+      "wrist_y_delta_mean": 0.0306,
+      "ref_elbow_y_mean": 0.0726,
+      "test_elbow_y_mean": 0.0869
+    },
+    "R": {
+      "n": 16,
+      "upper_arm_angle_mean_deg": 17.48,
+      "upper_arm_angle_max_deg": 35.97,
+      "full_arm_angle_mean_deg": 21.25,
+      "elbow_y_delta_mean": 0.0103,
+      "wrist_y_delta_mean": 0.0414,
+      "ref_elbow_y_mean": 0.0721,
+      "test_elbow_y_mean": 0.0824
+    }
+  },
+  "compare_catalog_walk_vs_retarget": {
+    "label": "catalog_walk_vs_smplx_retarget",
+    "L": {
+      "n": 16,
+      "upper_arm_angle_mean_deg": 23.3,
+      "upper_arm_angle_max_deg": 42.2,
+      "full_arm_angle_mean_deg": 26.7,
+      "elbow_y_delta_mean": 0.055,
+      "wrist_y_delta_mean": 0.025,
+      "ref_elbow_y_mean": 0.0319,
+      "test_elbow_y_mean": 0.0869
+    },
+    "R": {
+      "n": 16,
+      "upper_arm_angle_mean_deg": 17.08,
+      "upper_arm_angle_max_deg": 44.57,
+      "full_arm_angle_mean_deg": 20.07,
+      "elbow_y_delta_mean": 0.0596,
+      "wrist_y_delta_mean": 0.0517,
+      "ref_elbow_y_mean": 0.0228,
+      "test_elbow_y_mean": 0.0824
+    }
+  },
+  "recommended_fix": {
+    "shoulder_fwd_deg": 11.63,
+    "collar_fwd_deg": 4.85,
+    "basis": "catalog_walk_vs_retarget_Y",
+    "mean_elbow_wrist_y_delta_m": 0.0478,
+    "note": "positive shoulder_fwd_deg pulls arms forward if retarget is more +Y (back)"
+  },
+  "interpretation": {
+    "elbow_y_delta": "test - ref; larger +Y usually means arms more 'back' if character faces -Y",
+    "upper_arm_angle_deg": "direction mismatch shoulder\u2192elbow between ref and retarget"
+  }
+}

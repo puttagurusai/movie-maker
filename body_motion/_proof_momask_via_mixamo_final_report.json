@@ -1,0 +1,56 @@
+{
+  "ok": true,
+  "ok_core": true,
+  "hands_ok": true,
+  "method": "mixamo_blend_FINAL_BONE_MAP_helpers",
+  "action": "momask_via_mixamo",
+  "src_blend": "C:\\me\\proj\\projface_v1\\body_motion\\_momask_mixamo_only.blend",
+  "pairs": 52,
+  "frames": [
+    1,
+    119
+  ],
+  "root_mode": "location",
+  "travel": 3.546,
+  "channels_changing": 43,
+  "right_shoulder_delta": 0.9813741881814053,
+  "checks": [
+    {
+      "f": 1,
+      "legs_down": true,
+      "spine_up": true,
+      "hand_drop": 0.491,
+      "pelvis": [
+        0.001,
+        -0.013,
+        0.992
+      ],
+      "L_elb_w": 0.954
+    },
+    {
+      "f": 31,
+      "legs_down": true,
+      "spine_up": true,
+      "hand_drop": 0.342,
+      "pelvis": [
+        -0.035,
+        -0.286,
+        0.913
+      ],
+      "L_elb_w": 0.746
+    },
+    {
+      "f": 61,
+      "legs_down": true,
+      "spine_up": true,
+      "hand_drop": 0.47,
+      "pelvis": [
+        -0.128,
+        -2.394,
+        1.234
+      ],
+      "L_elb_w": 0.912
+    }
+  ],
+  "saved": "C:\\me\\proj\\projface_v1\\body_motion\\_momask_ours.blend"
+}

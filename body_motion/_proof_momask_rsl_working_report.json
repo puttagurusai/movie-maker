@@ -1,0 +1,60 @@
+{
+  "ok": true,
+  "method": "Rokoko working map + full-frame helper bake (catalog math)",
+  "src_blend": "C:\\me\\proj\\projface_v1\\body_motion\\momask_cache\\momask_a849a50b31fb_mixamo.blend",
+  "rokoko_map": "C:\\me\\proj\\projface_v1\\final hml3dto smpl.json",
+  "rsl_pairs": 18,
+  "bake_pairs": 52,
+  "action": "momask_a849a50b31fb",
+  "frames": [
+    1,
+    40
+  ],
+  "travel": 2.083,
+  "checks": [
+    {
+      "f": 1,
+      "legs_down": true,
+      "spine_up": true,
+      "hand_drop": 0.221,
+      "spine2_w": 0.999,
+      "collar_w": 0.706,
+      "L_elb_w": 0.5,
+      "pelvis": [
+        -7.999,
+        -0.013,
+        0.992
+      ]
+    },
+    {
+      "f": 31,
+      "legs_down": true,
+      "spine_up": true,
+      "hand_drop": -0.279,
+      "spine2_w": 0.994,
+      "collar_w": 0.658,
+      "L_elb_w": 0.705,
+      "pelvis": [
+        -8.056,
+        -1.902,
+        0.729
+      ]
+    },
+    {
+      "f": 40,
+      "legs_down": true,
+      "spine_up": true,
+      "hand_drop": -0.11,
+      "spine2_w": 0.997,
+      "collar_w": 0.716,
+      "L_elb_w": 0.815,
+      "pelvis": [
+        -8.038,
+        -2.076,
+        0.712
+      ]
+    }
+  ],
+  "saved": "C:\\me\\proj\\projface_v1\\body_motion\\momask_cache\\momask_a849a50b31fb.blend",
+  "note": "final hml3dto smpl.json is the canonical Rokoko custom map (leftUpperArm\u2192left_shoulder, toes, fingers). Full body filled from FINAL_BONE_MAP."
+}

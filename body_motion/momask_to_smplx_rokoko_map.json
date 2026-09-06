@@ -1,0 +1,67 @@
+{
+  "status": "CORRECT_FULL",
+  "version": 1,
+  "source": "momask_walk BVH (Hips/LeftUpLeg/... Mixamo-like names)",
+  "target": "SMPL-X_Armature",
+  "notes": [
+    "This is the FULL body map. The export momaskto smplx.json was incomplete:",
+    "  - only upperArm + fingers + toes",
+    "  - NO hips/spine/collar — collars then look broken even if skeletons overlap",
+    "CRITICAL arm chain: Shoulder→collar, Arm→shoulder, ForeArm→elbow, Hand→wrist",
+    "Bone LENGTHS are never equalized by Rokoko — only rotations (+ root loc).",
+    "MoMask collar (~9.6cm) vs SMPL-X collar (~15.4cm) is the main proportion bug.",
+    "Do NOT re-Build Bone List without re-applying this map.",
+    "Fingers: MoMask BVH has NO finger bones — leave SMPL-X fingers unmapped (rest)."
+  ],
+  "map": {
+    "Hips": "pelvis",
+    "Spine": "spine1",
+    "Spine1": "spine2",
+    "Spine2": "spine3",
+    "Neck": "neck",
+    "Head": "head",
+
+    "LeftShoulder": "left_collar",
+    "LeftArm": "left_shoulder",
+    "LeftForeArm": "left_elbow",
+    "LeftHand": "left_wrist",
+
+    "RightShoulder": "right_collar",
+    "RightArm": "right_shoulder",
+    "RightForeArm": "right_elbow",
+    "RightHand": "right_wrist",
+
+    "LeftUpLeg": "left_hip",
+    "LeftLeg": "left_knee",
+    "LeftFoot": "left_ankle",
+    "LeftToe": "left_foot",
+
+    "RightUpLeg": "right_hip",
+    "RightLeg": "right_knee",
+    "RightFoot": "right_ankle",
+    "RightToe": "right_foot"
+  },
+  "leave_unmapped": [
+    "jaw",
+    "left_eye_smplhf",
+    "right_eye_smplhf",
+    "left_thumb1", "left_thumb2", "left_thumb3",
+    "left_index1", "left_index2", "left_index3",
+    "left_middle1", "left_middle2", "left_middle3",
+    "left_ring1", "left_ring2", "left_ring3",
+    "left_pinky1", "left_pinky2", "left_pinky3",
+    "right_thumb1", "right_thumb2", "right_thumb3",
+    "right_index1", "right_index2", "right_index3",
+    "right_middle1", "right_middle2", "right_middle3",
+    "right_ring1", "right_ring2", "right_ring3",
+    "right_pinky1", "right_pinky2", "right_pinky3"
+  ],
+  "measured_rest_lengths_m": {
+    "comment": "From live Blender scene 2026-08-02 — not identical",
+    "hips_to_head": {"momask": 0.576, "smplx": 0.647, "ratio": 0.89},
+    "L_collar_joint_to_joint": {"momask_LeftShoulder_to_LeftArm": 0.096, "smplx_left_collar_to_left_shoulder": 0.154, "diff_pct": -37.5},
+    "spine_to_L_collar_root": {"momask": 0.149, "smplx": 0.087, "diff_pct": 70.4},
+    "L_upper_arm": {"momask": 0.261, "smplx": 0.270, "diff_pct": -3.1},
+    "L_thigh": {"momask": 0.377, "smplx": 0.403, "diff_pct": -6.4}
+  }
+}

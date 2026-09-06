@@ -1,0 +1,62 @@
+{
+  "ok": true,
+  "fbx": "C:\\me\\proj\\projface_v1\\body_motion\\source_fbx\\momask_mixamo_official.fbx",
+  "blend": "C:\\me\\proj\\projface_v1\\body_motion\\_momask_mixamo_only.blend",
+  "bvh": "C:\\me\\proj\\projface_v1\\lmm train\\momask_walk.bvh",
+  "mixamo": "C:\\me\\proj\\projface_v1\\body_motion\\source_fbx\\Idle.fbx",
+  "map": "C:\\Users\\putta.gurusaireddy\\Downloads\\mapping.json",
+  "frames": [
+    1,
+    119
+  ],
+  "scale_bvh_to_mixamo": 0.9677,
+  "arm_delta": 0.0761,
+  "checks": [
+    {
+      "frame": 1,
+      "legs_down": true,
+      "spine_up": true,
+      "spine_z": [
+        2.169,
+        2.265,
+        2.347,
+        2.398,
+        2.644
+      ],
+      "hip_z": 2.098,
+      "knee_z": 1.662,
+      "foot_z": 1.225,
+      "hand_drop": 0.533,
+      "LeftArm_q": [
+        0.863,
+        0.5,
+        0.0,
+        -0.076
+      ]
+    },
+    {
+      "frame": 31,
+      "legs_down": true,
+      "spine_up": true,
+      "spine_z": [
+        2.101,
+        2.2,
+        2.245,
+        2.333,
+        2.558
+      ],
+      "hip_z": 2.027,
+      "knee_z": 1.615,
+      "foot_z": 1.233,
+      "hand_drop": 0.378,
+      "LeftArm_q": [
+        0.869,
+        0.495,
+        0.0,
+        -0.012
+      ]
+    }
+  ],
+  "how_to_view": "Open blend or FBX, select Mixamo Armature, play timeline",
+  "note": "KeeMap does not scale Mixamo bones; BVH is scaled to hips-head match. Spine uses mapping.json (not crushed by calc)."
+}

@@ -1,0 +1,96 @@
+================================================================================
+  LMM → projface pipeline bridge (how the "adapter gap" is filled)
+================================================================================
+
+  You were right: training was specified to FIT the pipeline. That means the
+  EXPORT FORMAT is fixed. Applying it onto SMPL-X_Armature is a separate,
+  explicit step (adapter) — same idea as FBX → retarget → Action for Mixamo.
+
+================================================================================
+1. END-TO-END CHAIN
+================================================================================
+
+  [1] TRAIN (Colab / Kaggle)
+        HumanML3D + Learned Motion Matching
+        → checkpoints
+
+  [2] INFER
+        prompt "a man is walking"
+        → lmm_out.npz
+            joint_format = humanml3d_joints22
+            joints       = (T, 22, 3) float32 @ fps=30
+
+  [3] ADAPTER  ← THIS WAS THE MISSING PRODUCT STEP (now provided)
+        tools/apply_lmm_npz_to_smplx.py
+        → reads npz
+        → maps HML 22 joints → SMPL-X_Armature body bones
+        → writes Blender Action (rotation_quaternion + pelvis location)
+        → fingers/jaw left at rest (face pipeline owns mouth)
+
+  [4] RUNTIME
+        blender_receiver / Action Editor plays that Action
+        like idle/walk clips from catalog
+        Face agents still drive shape keys only
+
+================================================================================
+2. WHY AN ADAPTER IS REQUIRED (not a contradiction)
+================================================================================
+
+  Training target was chosen for HumanML3D:
+
+    new_joints (T,22,3) positions  — what LMM Decompressor outputs
+
+  Blender character needs:
+
+    SMPL-X_Armature pose bone LOCAL ROTATIONS (+ root location)
+
+  Positions ≠ bone local quats. Conversion = adapter.
+
+  This is the same class of step as:
+    Mixamo FBX → FINAL_BONE_MAP retarget → Action
+  which you already did for clips.
+
+  LMM train guide focused on (1)+(2). Product wiring needs (3).
+  Format contract was always LMM_IO_FORMAT; adapter implements format D.
+
+================================================================================
+3. HOW TO RUN ON YOUR FILE
+================================================================================
+
+  Input you have:
+    C:\me\proj\projface_v1\lmm train\lmm_out.npz
+    (schema PASS: humanml3d_joints22, 59x22x3, fps 30)
+
+  Command:
+
+    & "C:\Program Files\Blender Foundation\Blender 5.1\blender.exe" `
+      "C:\me\proj\projface_v1\whole_body_retargeted.blend" `
+      --python "C:\me\proj\projface_v1\tools\apply_lmm_npz_to_smplx.py" -- `
+      --npz "C:\me\proj\projface_v1\lmm train\lmm_out.npz" `
+      --action lmm_walk `
+      --out "C:\me\proj\projface_v1\body_motion\_lmm_applied.blend"
+
+  Then open _lmm_applied.blend:
+    Select SMPL-X_Armature → Action Editor → action "lmm_walk" → Play
+
+================================================================================
+4. QUALITY NOTES
+================================================================================
+
+  - Adapter is V1 (direction-based bone aim). May need tuning for twist/roll.
+  - If feet slide or scale wrong: use --scale manually or improve auto height.
+  - Fingers stay rest (22 joints have no fingers) — OK for walk body.
+  - If motion looks wrong, causes can be: weak LMM train OR adapter — compare
+    stick-figure plot of joints vs Blender pose.
+
+================================================================================
+5. OPTIONAL LATER
+================================================================================
+
+  - Register lmm_* Actions in catalog.json for director engine=lmm
+  - Stream poses without baking Action
+  - Better IK full-body solve for higher fidelity
+
+================================================================================
+END
+================================================================================

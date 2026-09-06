@@ -1,0 +1,154 @@
+{
+  "ok": true,
+  "travel": 3.546,
+  "spine_ok": true,
+  "spine_flex": true,
+  "spine_capped": true,
+  "elbow_ok": true,
+  "checks": [
+    {
+      "f": 1,
+      "spine1": [
+        0.982,
+        0.19,
+        -0.0,
+        -0.013
+      ],
+      "spine2": [
+        0.989,
+        -0.145,
+        0.0,
+        0.041
+      ],
+      "spine3": [
+        0.988,
+        0.146,
+        -0.0,
+        -0.057
+      ],
+      "spine1_deg": 21.95,
+      "spine2_deg": 17.37,
+      "spine3_deg": 18.0,
+      "L_elb": [
+        0.983,
+        0.061,
+        -0.0,
+        -0.172
+      ],
+      "R_elb": [
+        0.997,
+        0.022,
+        0.0,
+        0.07
+      ],
+      "L_sh_z": 1.303,
+      "L_collar_z": 1.372,
+      "legs_down": true,
+      "hand_drop": 0.53,
+      "pelvis": [
+        0.001,
+        -0.013,
+        0.992
+      ]
+    },
+    {
+      "f": 31,
+      "spine1": [
+        0.982,
+        0.189,
+        0.0,
+        -0.021
+      ],
+      "spine2": [
+        0.988,
+        -0.147,
+        0.0,
+        0.038
+      ],
+      "spine3": [
+        0.988,
+        0.155,
+        0.0,
+        -0.019
+      ],
+      "spine1_deg": 21.96,
+      "spine2_deg": 17.41,
+      "spine3_deg": 18.0,
+      "L_elb": [
+        0.981,
+        0.16,
+        0.0,
+        -0.109
+      ],
+      "R_elb": [
+        0.994,
+        0.042,
+        0.0,
+        0.1
+      ],
+      "L_sh_z": 1.225,
+      "L_collar_z": 1.291,
+      "legs_down": true,
+      "hand_drop": 0.52,
+      "pelvis": [
+        -0.035,
+        -0.286,
+        0.913
+      ]
+    },
+    {
+      "f": 61,
+      "spine1": [
+        0.982,
+        0.189,
+        0.0,
+        -0.022
+      ],
+      "spine2": [
+        0.989,
+        -0.143,
+        -0.0,
+        0.046
+      ],
+      "spine3": [
+        0.988,
+        0.156,
+        -0.0,
+        -0.01
+      ],
+      "spine1_deg": 21.96,
+      "spine2_deg": 17.32,
+      "spine3_deg": 18.0,
+      "L_elb": [
+        0.971,
+        0.111,
+        0.0,
+        -0.213
+      ],
+      "R_elb": [
+        1.0,
+        -0.007,
+        0.0,
+        -0.016
+      ],
+      "L_sh_z": 1.55,
+      "L_collar_z": 1.616,
+      "legs_down": true,
+      "hand_drop": 0.488,
+      "pelvis": [
+        -0.128,
+        -2.394,
+        1.234
+      ]
+    }
+  ],
+  "action": "momask_from_calib",
+  "saved": "C:\\me\\proj\\projface_v1\\body_motion\\_momask_ours.blend",
+  "policy": {
+    "spine1": "damp=0.80 max=28\u00b0 + y-twist strip",
+    "spine2": "damp=0.65 max=22\u00b0 + y-twist strip",
+    "spine3": "damp=0.55 max=18\u00b0 + y-twist strip",
+    "shoulders": "undamped full aim (no twist strip)",
+    "elbows": "swing aim + y-twist strip"
+  }
+}

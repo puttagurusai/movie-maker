@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "method": "mix_catalog_rots_momask_joints",
+  "ref_action": "walk",
+  "action": "momask_from_calib",
+  "travel": 3.546,
+  "pull": 1.0,
+  "pelvis_yaw": 0.4,
+  "checks": [
+    {
+      "f": 1,
+      "spine2": [
+        0.999,
+        0.022,
+        -0.021,
+        0.01
+      ],
+      "spine2_deg": 3.67,
+      "L_elb_w": 0.996,
+      "L_sh_z": 1.369,
+      "legs_down": true,
+      "hand_drop": 0.518,
+      "pelvis": [
+        0.001,
+        -0.013,
+        0.992
+      ],
+      "has_fingers": true
+    },
+    {
+      "f": 31,
+      "spine2": [
+        0.999,
+        0.023,
+        -0.027,
+        0.013
+      ],
+      "spine2_deg": 4.33,
+      "L_elb_w": 0.941,
+      "L_sh_z": 1.227,
+      "legs_down": true,
+      "hand_drop": 0.433,
+      "pelvis": [
+        -0.035,
+        -0.286,
+        0.913
+      ],
+      "has_fingers": true
+    },
+    {
+      "f": 61,
+      "spine2": [
+        0.999,
+        0.023,
+        -0.037,
+        0.017
+      ],
+      "spine2_deg": 5.28,
+      "L_elb_w": 0.791,
+      "L_sh_z": 1.545,
+      "legs_down": true,
+      "hand_drop": 0.462,
+      "pelvis": [
+        -0.128,
+        -2.394,
+        1.234
+      ],
+      "has_fingers": true
+    }
+  ],
+  "saved": "C:\\me\\proj\\projface_v1\\body_motion\\_momask_ours.blend",
+  "policy": {
+    "rotations": "catalog 'walk' phase-wrapped (spine/neck/head/fingers locked)",
+    "joints": "MoMask BVH soft swing-aim on legs+arms only",
+    "root": "MoMask Hips absolute + mild facing blend",
+    "fingers": "pure catalog 'walk'",
+    "elbows": "MoMask swing + 85% catalog Y-twist"
+  }
+}
