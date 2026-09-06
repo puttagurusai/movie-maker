@@ -1,0 +1,9 @@
+HDRIs in assets/looks/hdri/ are from Poly Haven (https://polyhaven.com)
+licensed under CC0 1.0 Universal (public domain dedication).
+
+Mapping:
+  studio_soft.exr  = studio_small_09 (2k EXR)
+  golden_hour.exr  = venice_sunset (2k EXR)
+  night_urban.exr  = dikhololo_night (2k EXR)
+
+You may use, modify, and redistribute without attribution (attribution appreciated).

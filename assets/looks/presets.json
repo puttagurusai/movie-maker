@@ -1,0 +1,26 @@
+{
+  "license": "HDRIs from Poly Haven — CC0 1.0. See LICENSE_POLYHAVEN.txt",
+  "hdri_dir": "assets/looks/hdri",
+  "files": {
+    "studio_soft": "studio_soft.exr",
+    "golden_hour": "golden_hour.exr",
+    "night_urban": "night_urban.exr",
+    "park_day": "park_day.exr",
+    "forest_day": "forest_day.exr",
+    "playground_day": "playground_day.exr",
+    "street_day": "street_day.exr"
+  },
+  "locations": {
+    "studio": { "hdri": "studio_soft", "set_style": "studio_cyc" },
+    "park": { "hdri": "park_day", "set_style": "exterior_park" },
+    "forest": { "hdri": "forest_day", "set_style": "exterior_forest" },
+    "playground": { "hdri": "playground_day", "set_style": "exterior_playground" },
+    "street": { "hdri": "street_day", "set_style": "exterior_street" },
+    "station": { "hdri": "street_day", "set_style": "exterior_station" },
+    "beach": { "hdri": "golden_hour", "set_style": "exterior_beach" },
+    "interior_room": { "hdri": "studio_soft", "set_style": "interior_simple" },
+    "corridor": { "hdri": "studio_soft", "set_style": "interior_simple" },
+    "stage": { "hdri": "studio_soft", "set_style": "studio_cyc" }
+  },
+  "notes": "LookPlan never goes into MoMask HumanML. Unknown location → nearest kit. Missing HDRI → three-point lights + procedural set."
+}
