@@ -1,0 +1,13 @@
+# Movie production + mesh preview export (long-form optimized)
+#   pip install -r requirements-movie.txt
+
+# Core audio
+soundfile>=0.12.1
+numpy>=1.24.0
+
+# Preview MP4 encode (ships ffmpeg binary via imageio-ffmpeg)
+imageio>=2.34.0
+imageio-ffmpeg>=0.5.1
+
+# Optional faster analysis
+# opencv-python-headless>=4.8.0

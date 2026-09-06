@@ -1,0 +1,97 @@
+{
+    "rokoko_custom_names": true,
+    "version": 1,
+    "bones": {
+        "leftUpperArm": [
+            "left_shoulder"
+        ],
+        "rightUpperArm": [
+            "right_shoulder"
+        ],
+        "rightThumbProximal": [
+            "right_thumb1"
+        ],
+        "rightThumbMedial": [
+            "right_thumb2"
+        ],
+        "rightThumbDistal": [
+            "right_thumb3"
+        ],
+        "rightIndexProximal": [
+            "right_index1"
+        ],
+        "rightIndexMedial": [
+            "right_index2"
+        ],
+        "rightIndexDistal": [
+            "right_index3"
+        ],
+        "rightMiddleDistal": [
+            "right_middle3"
+        ],
+        "rightRingProximal": [
+            "right_ring1"
+        ],
+        "rightRingMedial": [
+            "right_ring2"
+        ],
+        "rightRingDistal": [
+            "right_ring3"
+        ],
+        "rightLittleProximal": [
+            "right_pinky1"
+        ],
+        "rightLittleMedial": [
+            "right_pinky2"
+        ],
+        "rightLittleDistal": [
+            "right_pinky3"
+        ],
+        "leftThumbProximal": [
+            "left_thumb1"
+        ],
+        "leftThumbMedial": [
+            "left_thumb2"
+        ],
+        "leftThumbDistal": [
+            "left_thumb3"
+        ],
+        "leftIndexProximal": [
+            "left_index1"
+        ],
+        "leftIndexMedial": [
+            "left_index2"
+        ],
+        "leftIndexDistal": [
+            "left_index3"
+        ],
+        "leftMiddleDistal": [
+            "left_middle3"
+        ],
+        "leftRingProximal": [
+            "left_ring1"
+        ],
+        "leftRingMedial": [
+            "left_ring2"
+        ],
+        "leftRingDistal": [
+            "left_ring3"
+        ],
+        "leftLittleProximal": [
+            "left_pinky1"
+        ],
+        "leftLittleMedial": [
+            "left_pinky2"
+        ],
+        "leftLittleDistal": [
+            "left_pinky3"
+        ],
+        "rightToe": [
+            "right_foot"
+        ],
+        "leftToe": [
+            "left_foot"
+        ]
+    },
+    "shapes": {}
+}
