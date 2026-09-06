@@ -1,0 +1,44 @@
+{
+  "fabrics": {
+    "denim": {
+      "diff": true,
+      "nor": true,
+      "rough": true
+    },
+    "jersey": {
+      "diff": true,
+      "nor": true,
+      "rough": true
+    },
+    "suit_wool": {
+      "diff": true,
+      "nor": true,
+      "rough": true
+    },
+    "leather": {
+      "diff": true,
+      "nor": true,
+      "rough": true
+    }
+  },
+  "npcs": {
+    "quaternius_ultimate": true,
+    "kenney_blocky": true,
+    "kenney_character.glb": true
+  },
+  "wardrobe_map": {
+    "casual_01": {
+      "shirt": "jersey",
+      "pants": "denim"
+    },
+    "formal_01": {
+      "shirt": "suit_wool",
+      "pants": "suit_wool"
+    },
+    "hero_default": {
+      "shirt": "jersey",
+      "pants": "denim"
+    }
+  },
+  "notes": "Hero SMPL-X fitted clothing is NOT in these packs. Use fabrics on proxy/wardrobe meshes; use NPC packs for Cast_Extras."
+}
